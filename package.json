@@ -4,6 +4,10 @@
   "description": "An interactive, filterable dependency map of a project's milestones, tasks, and issues, rendered from one JSON file any tracker can produce.",
   "license": "MIT",
   "private": true,
+  "bin": {
+    "task-map-build": "bin/build.mjs",
+    "task-map-validate": "bin/validate.mjs"
+  },
   "engines": {
     "node": ">=22"
   },

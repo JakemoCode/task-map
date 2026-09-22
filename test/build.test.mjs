@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 
-import { build } from '../bin/build.mjs';
+import { build } from '../lib/build.mjs';
 
 const read = path => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 const sample = () => JSON.parse(read('examples/sample.json'));
