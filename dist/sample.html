@@ -4820,12 +4820,12 @@ function showErrors(errors) {
   }
   const more = errors.length > 50 ? ` (first 50 of ${errors.length})` : '';
   showMessage(html('h2', {}, `This data does not match the task-map format${more}`), list,
-    html('p', {}, 'Run node bin/validate.mjs <file> for the full list. docs/data-format.md explains each rule.'));
+    html('p', {}, 'Run task-map-validate <file> (or node bin/validate.mjs <file>) for the full list. docs/data-format.md explains each rule.'));
 }
 
 function load(data) {
   if (typeof dagre === 'undefined') {
-    showMessage(html('h2', {}, 'The layout library did not load'), html('p', {}, 'Build the page with bin/build.mjs, which inlines vendor/dagre.min.js.'));
+    showMessage(html('h2', {}, 'The layout library did not load'), html('p', {}, 'Build the page with task-map-build (bin/build.mjs), which inlines vendor/dagre.min.js.'));
     return;
   }
   const { errors, warnings } = taskMapValidate.validate(data);
@@ -4846,13 +4846,15 @@ function update(data) {
   const keyboardFocus = document.activeElement?.closest?.('.node')?.dataset.id;
   setData(data);
   const focusNode = byId.get(state.focus);
-  if (!focusNode || !SPINE.has(focusNode.kind)) state.focus = '';
+  // A vanished focus redraws the whole map, which the old zoom (fitted to the focus) no longer fits.
+  const refit = Boolean(state.focus) && (!focusNode || !SPINE.has(focusNode.kind));
+  if (refit) state.focus = '';
   document.getElementById('focus').value = state.focus;
   if (state.selected && !byId.has(state.selected)) {
     state.selected = null;
     document.getElementById('panel').classList.remove('open');
   }
-  redraw(false);
+  redraw(refit);
   if (state.selected) openPanel(byId.get(state.selected));
   if (keyboardFocus) document.querySelector(`#viewport .node[data-id="${CSS.escape(keyboardFocus)}"]`)?.focus();
 }

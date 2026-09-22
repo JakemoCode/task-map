@@ -123,6 +123,24 @@ test('when the selected or focused node disappears, the panel closes and focus r
   assert.equal(await count(page, '#viewport .node[data-id="M3"]'), 1, 'the whole map is drawn again');
 });
 
+test('when a vanished focus returns to the whole map, the whole map fits on screen', { skip }, async () => {
+  const page = await openViewer();
+  await drop(page, sample());
+  await focusOn(page, 'M7');
+  const withoutFocus = without(sample(), 'M7');
+  withoutFocus.title = 'Lantern, M7 gone';
+  await drop(page, withoutFocus);
+
+  const offscreen = await page.evaluate(`(() => {
+    const view = document.getElementById('map').getBoundingClientRect();
+    return [...document.querySelectorAll('#viewport .node')].filter(node => {
+      const box = node.getBoundingClientRect();
+      return box.left < view.left || box.right > view.right || box.top < view.top || box.bottom > view.bottom;
+    }).map(node => node.dataset.id);
+  })()`);
+  assert.deepEqual(offscreen, []);
+});
+
 test('new data keeps the panel scrolled where it was and keyboard focus on the same node', { skip }, async () => {
   const page = await openViewer();
   await page.evaluate(`window.resizeTo?.(1400, 420)`);

@@ -48,9 +48,14 @@ export async function launchChrome(binary) {
     if (message.error) waiter.reject(new Error(message.error.message));
     else waiter.resolve(message.result);
   };
+  // A per-call deadline: if Chrome dies mid-test, the run fails instead of hanging.
   const send = (method, params = {}, sessionId) => new Promise((resolve, reject) => {
     const id = nextId++;
-    pending.set(id, { resolve, reject });
+    const timer = setTimeout(() => { pending.delete(id); reject(new Error(`Chrome did not answer ${method}`)); }, 15000);
+    pending.set(id, {
+      resolve: value => { clearTimeout(timer); resolve(value); },
+      reject: error => { clearTimeout(timer); reject(error); },
+    });
     socket.send(JSON.stringify({ id, method, params, sessionId }));
   });
 
