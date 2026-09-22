@@ -4152,6 +4152,9 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
   .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 32px 24px; }
   .drop.over { border-color: var(--accent); color: var(--text); }
   .drop label { color: var(--review); cursor: pointer; text-decoration: underline; }
+  .drop .help { font-size: 13px; margin: 16px 0 0; }
+  .drop .help a { color: var(--review); }
+  .drop .help code { white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -4884,8 +4887,13 @@ function waitForData() {
   input.addEventListener('change', () => input.files[0] && readFile(input.files[0]));
   const drop = html('div', { class: 'drop' });
   const label = html('label', { for: 'file' }, 'choose a file');
+  const help = html('p', { class: 'help' });
+  help.append('No file yet? An adapter turns your tracker into one; ',
+    html('a', { href: 'https://github.com/JakemoCode/task-map/blob/main/AGENTS.md', target: '_blank', rel: 'noopener' }, 'AGENTS.md'),
+    ' shows how to write it. To keep the map current as the tracker changes, run ',
+    html('code', {}, 'task-map-serve --adapter "<command>"'), '.');
   drop.append(html('h2', {}, 'Drop a task-map JSON file here'), document.createTextNode('or '), label,
-    document.createTextNode(', or open this page with ?data=<url>'), input);
+    document.createTextNode(', or open this page with ?data=<url>'), help, input);
   showMessage(drop);
   const main = document.querySelector('main');
   main.addEventListener('dragover', event => { event.preventDefault(); drop.classList.add('over'); });
