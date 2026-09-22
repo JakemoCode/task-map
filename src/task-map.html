@@ -173,6 +173,15 @@ const PRESETS = {
 const SPINE = new Set(['milestone', 'gate']);
 const DEFAULT_KIND_NAMES = { milestone: 'milestone', gate: 'gate', task: 'task', issue: 'issue' };
 const NS = 'http://www.w3.org/2000/svg';
+// Held from startup: showMessage replaces <main>'s contents, which would otherwise lose the map.
+const MAP_SVG = document.getElementById('map');
+
+// Put the map back only when a message replaced it. Re-inserting it unconditionally would
+// drop keyboard focus from whatever node had it.
+function showMap() {
+  const main = document.querySelector('main');
+  if (!main.contains(MAP_SVG)) main.replaceChildren(MAP_SVG);
+}
 
 const state = { mode: 'frontier', show: new Set(PRESETS.frontier), focus: '', selected: null, view: { x: 0, y: 0, k: 1 } };
 let kindNames = DEFAULT_KIND_NAMES;
@@ -209,6 +218,7 @@ function statusLabel(status) {
 }
 
 function index() {
+  for (const map of [byId, outgoing, incoming, linkedFrom]) map.clear();
   edges = [
     ...DATA.edges,
     ...DATA.nodes.filter(node => node.parent).map(node => ({ from: node.parent, to: node.id, type: 'child' })),
@@ -672,11 +682,36 @@ function legendItem(color, text) {
   return item;
 }
 
-function buildControls() {
+// Everything that depends on the data: safe to run again when new data arrives.
+function setData(data) {
+  DATA = data;
+  kindNames = { ...DEFAULT_KIND_NAMES, ...(data.kindNames || {}) };
+  index();
   document.title = DATA.title;
   const words = DATA.title.split(' ');
   const brand = document.getElementById('brand');
   brand.replaceChildren(document.createTextNode(`${words[0]} `), html('b', {}, words.slice(1).join(' ')));
+  const focus = document.getElementById('focus');
+  focus.replaceChildren(html('option', { value: '' }, 'whole map'));
+  for (const node of DATA.nodes.filter(n => SPINE.has(n.kind))) {
+    focus.appendChild(html('option', { value: node.id }, `${node.label} · ${truncate(node.title, 36)}`));
+  }
+  document.getElementById('footer').textContent = [
+    'scroll = zoom · drag = pan · click a node for details',
+    `solid = dependency · dashed amber = ${kindNames.gate} · dotted = ${kindNames.milestone} → what hangs off it`,
+    'select a node to see its links (pink = declared, grey = mentioned)',
+    DATA.source, DATA.generatedAt && `generated ${DATA.generatedAt}`,
+  ].filter(Boolean).join(' · ');
+  syncControls();
+}
+
+let bound = false;
+
+// Controls and listeners that exist once per page, whatever data it shows.
+function bindOnce() {
+  if (bound) return;
+  bound = true;
+  bindViewport();
   const chips = document.getElementById('chips');
   const legend = document.getElementById('legend');
   for (const [key, short, long] of STATUSES) {
@@ -697,19 +732,8 @@ function buildControls() {
     redraw(true);
   }));
   const focus = document.getElementById('focus');
-  focus.appendChild(html('option', { value: '' }, 'whole map'));
-  for (const node of DATA.nodes.filter(n => SPINE.has(n.kind))) {
-    focus.appendChild(html('option', { value: node.id }, `${node.label} · ${truncate(node.title, 36)}`));
-  }
   focus.addEventListener('change', () => { state.focus = focus.value; redraw(true); });
   document.getElementById('fit').addEventListener('click', fit);
-  document.getElementById('footer').textContent = [
-    'scroll = zoom · drag = pan · click a node for details',
-    `solid = dependency · dashed amber = ${kindNames.gate} · dotted = ${kindNames.milestone} → what hangs off it`,
-    'select a node to see its links (pink = declared, grey = mentioned)',
-    DATA.source, DATA.generatedAt && `generated ${DATA.generatedAt}`,
-  ].filter(Boolean).join(' · ');
-  syncControls();
 }
 
 function bindViewport() {
@@ -790,15 +814,30 @@ function load(data) {
   const { errors, warnings } = taskMapValidate.validate(data);
   if (errors.length) { showErrors(errors); return; }
   for (const { path, message } of warnings) console.warn(`task-map: ${path} ${message}`);
-  DATA = data;
   document.body.classList.remove('empty');
-  kindNames = { ...DEFAULT_KIND_NAMES, ...(data.kindNames || {}) };
-  document.querySelector('main').replaceChildren(document.querySelector('main svg') || html('div'));
-  index();
-  buildControls();
-  bindViewport();
+  showMap();
+  bindOnce();
+  if (DATA) { update(data); return; }
+  setData(data);
   document.documentElement.style.setProperty('--header-h', `${document.querySelector('header').offsetHeight}px`);
   redraw(true);
+}
+
+// New data for a map already on screen: keep the zoom, filters, focus, and open panel wherever
+// the nodes they point at still exist, and show what changed.
+function update(data) {
+  const keyboardFocus = document.activeElement?.closest?.('.node')?.dataset.id;
+  setData(data);
+  const focusNode = byId.get(state.focus);
+  if (!focusNode || !SPINE.has(focusNode.kind)) state.focus = '';
+  document.getElementById('focus').value = state.focus;
+  if (state.selected && !byId.has(state.selected)) {
+    state.selected = null;
+    document.getElementById('panel').classList.remove('open');
+  }
+  redraw(false);
+  if (state.selected) openPanel(byId.get(state.selected));
+  if (keyboardFocus) document.querySelector(`#viewport .node[data-id="${CSS.escape(keyboardFocus)}"]`)?.focus();
 }
 
 function readFile(file) {
@@ -817,7 +856,6 @@ function waitForData() {
     }).then(load, error => showErrors([{ path: url, message: `could not be loaded: ${error.message}` }]));
     return;
   }
-  const svg = document.querySelector('main svg');
   const input = html('input', { type: 'file', accept: '.json,application/json', id: 'file', hidden: '' });
   input.addEventListener('change', () => input.files[0] && readFile(input.files[0]));
   const drop = html('div', { class: 'drop' });
@@ -832,10 +870,10 @@ function waitForData() {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (!file) return;
-    main.replaceChildren(svg);
+    showMap();
     readFile(file);
   });
-  input.addEventListener('change', () => main.replaceChildren(svg), { once: true });
+  input.addEventListener('change', showMap, { once: true });
 }
 
 document.body.classList.add('empty');
