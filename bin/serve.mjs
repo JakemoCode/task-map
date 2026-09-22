@@ -42,10 +42,10 @@ try {
 console.log(server.url);
 if (options.open) openBrowser(server.url);
 
-// The adapter runs in its own process group, out of reach of the terminal's Ctrl-C, so stopping
-// this process has to kill it. close() kills synchronously, so it also works from the exit event.
+// The adapter runs in its own process group, out of reach of the terminal's Ctrl-C or hangup, so
+// stopping this process has to kill it. close() kills synchronously, so it also works from exit.
 process.on('exit', () => server.close());
-for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143]]) process.on(signal, () => process.exit(code));
+for (const [signal, code] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) process.on(signal, () => process.exit(code));
 
 function usage(problem) {
   console.error(`${problem}\n${USAGE}`);
@@ -56,7 +56,8 @@ function openBrowser(url) {
   const [command, ...args] = process.platform === 'darwin' ? ['open', url]
     : process.platform === 'win32' ? ['cmd', '/c', 'start', '""', url]
       : ['xdg-open', url];
-  spawn(command, args, { stdio: 'ignore', detached: true, windowsHide: true })
+  // Verbatim, or Node quotes start's empty "" title into one that start misreads.
+  spawn(command, args, { stdio: 'ignore', detached: true, windowsHide: true, windowsVerbatimArguments: true })
     .on('error', () => console.error(`could not open a browser; visit ${url}`))
     .unref();
 }

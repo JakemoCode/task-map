@@ -63,26 +63,29 @@ test('task-map-serve on a port already in use says to pick another with --port',
   }
 });
 
-test('Ctrl-C on task-map-serve leaves no adapter process behind', async t => {
-  const fixture = adapter(join(scratch, 'hung-adapter'), {}, '--hang');
-  const serve = spawn(process.execPath, [linked('task-map-serve'), '--adapter', fixture.command, '--port', '0'],
-    { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'] });
-  const exited = new Promise(resolve => serve.once('exit', (code, signal) => resolve({ code, signal })));
-  let stdout = '';
-  serve.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
-  let pids = [];
-  t.after(() => {
-    serve.kill('SIGKILL');
-    for (const pid of pids) try { process.kill(pid, 'SIGKILL'); } catch {}
+// Ctrl-C, a kill, and a closed terminal. The adapter runs in its own process group, so none of these
+// reaches it; task-map-serve has to kill it on the way out.
+for (const [signal, status] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+  test(`${signal} to task-map-serve leaves no adapter process behind`, async t => {
+    const fixture = adapter(join(scratch, `hung-adapter-${signal}`), {}, '--hang');
+    const serve = spawn(process.execPath, [linked('task-map-serve'), '--adapter', fixture.command, '--port', '0'],
+      { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'] });
+    const exited = new Promise(resolve => serve.once('exit', (code, killedBy) => resolve(code ?? killedBy)));
+    let stdout = '';
+    serve.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    let pids = [];
+    t.after(() => {
+      serve.kill('SIGKILL');
+      for (const pid of pids) try { process.kill(pid, 'SIGKILL'); } catch {}
+    });
+
+    await waitUntil(() => /http:\/\/\S+/.test(stdout), 'the server prints its address');
+    await fetch(`${/http:\/\/\S+/.exec(stdout)[0]}/data`);
+    pids = await hungPids(fixture);
+    assert.ok(pids.every(alive), 'the adapter and its child are running');
+
+    serve.kill(signal);
+    assert.equal(await exited, status);
+    await waitUntil(() => !pids.some(alive), `no process of ${pids} is left`);
   });
-
-  await waitUntil(() => /http:\/\/\S+/.test(stdout), 'the server prints its address');
-  await fetch(`${/http:\/\/\S+/.exec(stdout)[0]}/data`);
-  pids = await hungPids(fixture);
-  assert.ok(pids.every(alive), 'the adapter and its child are running');
-
-  serve.kill('SIGINT');
-  const { code, signal } = await exited;
-  assert.ok(code === 130 || signal === 'SIGINT', `exited with ${code ?? signal}`);
-  await waitUntil(() => !pids.some(alive), `no process of ${pids} is left`);
-});
+}
