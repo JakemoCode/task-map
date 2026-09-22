@@ -28,6 +28,19 @@ node bin/build.mjs map.json -o map.html # one self-contained file to open or sha
 
 Installed as a dependency (`npm install github:JakemoCode/task-map`), the same two tools are the commands `task-map-validate` and `task-map-build`. `docs/data-format.md` is the full reference. Node 22 or later runs the tools; the page needs only a browser.
 
+## Keep it live
+
+A built map is a snapshot. `task-map-serve` keeps one current: it serves the map on your machine and reruns the adapter whenever the data is older than `--interval` seconds and the page asks for it.
+
+```sh
+task-map-serve --adapter "python3 my_adapter.py" --interval 60 --open
+task-map-serve --data map.json --interval 5    # something else writes the file
+```
+
+The open page asks for new data every 10 seconds while its tab is visible, and never while it is hidden. A change redraws the map in place, keeping your zoom, filters, focus, and open panel. The header shows when the data was last checked, and why a refresh failed while the last good map stays on screen. The adapter runs with your own credentials, one run at a time, and is killed after two minutes or when you stop the server.
+
+The server listens on `127.0.0.1` only (`--port`, default 4173) and refuses requests from other sites. Windows is supported, but CI tests Linux only.
+
 ## How it works
 
 The adapter decides what everything *is*: which objects are milestones, what each status means, what depends on what. The page decides everything visual. It lays the graph out with [dagre](https://github.com/dagrejs/dagre), drops dependency edges already implied by a longer path so the spine stays readable, derives the dotted edges from each ticket's `parent`, and parks tickets with no anchor in a tray below the graph. Links between tickets and milestones stay hidden until you select one end, which is how the map shows a lot of relations without turning into a hairball.

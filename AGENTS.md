@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This repo draws a project as an interactive dependency map from one JSON file. An **adapter** reads a tracker and writes that file. The page owns everything visual: layout, filtering, the frontier view, which edges to draw. An adapter decides what each tracker object *is*, never where it goes.
+This repo draws a project as an interactive dependency map from one JSON file. An **adapter** reads a tracker and prints that file. The page owns everything visual: layout, filtering, the frontier view, which edges to draw. An adapter decides what each tracker object *is*, never where it goes.
 
 Two kinds of work happen here:
 
@@ -9,7 +9,7 @@ Two kinds of work happen here:
 
 ## Write an adapter
 
-The adapter lives wherever the user's project does, in any language, and writes one JSON file. It needs this repo only to validate and build.
+The adapter lives wherever the user's project does, in any language, and prints one JSON document to stdout. It needs this repo only to validate, build, and serve.
 
 `docs/data-format.md` is the contract: every field, status, edge type, and rule. `docs/tracker-recipes.md` has starting mappings for GitHub, Linear, Jira, and spreadsheets; read the section for the tracker you are wiring.
 
@@ -28,7 +28,7 @@ The adapter lives wherever the user's project does, in any language, and writes 
 
 5. **Choose `detail` and `links`.** `detail` is the one fact a reader needs to act on the status: the failing check, the PR number, what it waits on. `links` carry relations that are not structure: a strong link for a declared or cited relation, a weak link for a passing mention. Done when every status in the worksheet names its `detail` source, or none.
 
-6. **Write the adapter and validate.** Run it, then `node bin/validate.mjs <output.json>`. Fix what it reports and rerun until it exits 0. Done when it exits 0 and every warning names a ticket you intend for the unanchored tray.
+6. **Write the adapter and validate.** Print the JSON to stdout, so `task-map-serve --adapter "<command>"` can run it for a live map. Run it into a file, then `node bin/validate.mjs <output.json>`. Fix what it reports and rerun until it exits 0. Done when it exits 0 and every warning names a ticket you intend for the unanchored tray.
 
 7. **Check id stability.** Run the adapter twice with no tracker changes between runs and compare the sorted node ids. Done when the two lists are identical. Stable ids are what keep a selection, a link, and a user's bookmark meaningful across refreshes.
 
@@ -40,6 +40,6 @@ Report the worksheet, the spine choice, and anything left off the map, so the us
 
 - `src/validate.js` is the format's single source of truth. `schema/task-map.schema.json` and `docs/data-format.md` restate it for other languages and for readers. A format change edits all three and `test/validate.test.mjs` together; a test pins the schema's enumerated values to the validator's.
 - A change that makes previously valid data invalid, or renders it differently in meaning, raises `VERSION` in `src/validate.js` and the schema's `version` const.
-- The page is `src/task-map.html` plus `src/validate.js` and `vendor/dagre.min.js`, which `lib/build.mjs` inlines. The page has no build step of its own and no runtime dependencies. Library code lives in `lib/`; each file in `bin/` is a plain command line over it, installed as `task-map-build` and `task-map-validate`.
+- The page is `src/task-map.html` plus `src/validate.js` and `vendor/dagre.min.js`, which `lib/build.mjs` inlines. The page has no build step of its own and no runtime dependencies. Library code lives in `lib/`; each file in `bin/` is a plain command line over it, installed as `task-map-build`, `task-map-serve`, and `task-map-validate`. `lib/serve.mjs` is the live server; the page's live mode, set through `build(data, { live })`, polls it.
 - `npm test` runs every check. `npm run build` refreshes `dist/`; the tests fail while `dist/` is stale. `test/page.test.mjs` drives the page in headless Chrome through `test/helpers/chrome.mjs`: it skips locally without Chrome and fails in CI without it. Set `CHROME_PATH` to point it at a specific browser.
 - Check a visual change in a browser against `dist/sample.html`, which exercises every status, both spine kinds, queued work, links, and the tray.
