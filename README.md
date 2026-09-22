@@ -8,7 +8,9 @@ The map is one HTML file with no server and no dependencies. It reads one JSON f
 
 ## Try it
 
-Open `dist/task-map.html` in a browser and drop `examples/sample.json` onto it. Or open `dist/sample.html`, which has the sample built in.
+**[Open the live demo](https://jakemocode.github.io/task-map/)**: a sample project, nothing to install. To see your own data, open the **[empty viewer](https://jakemocode.github.io/task-map/dist/task-map.html)** and drop a task-map JSON file onto it; the file never leaves your browser.
+
+Offline, the same two pages are `dist/sample.html` and `dist/task-map.html` in this repo.
 
 The **frontier** view shows the whole spine plus only the work that needs attention: up next, in progress, in the gate, in review, failed, blocked, and open issues. **All tasks** adds finished and not-yet-ready work. The chips toggle each status on its own, and **focus** narrows the map to one milestone's upstream and downstream. Scroll zooms, drag pans, `f` fits, `Esc` closes the panel.
 
