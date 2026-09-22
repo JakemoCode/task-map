@@ -6,6 +6,7 @@
   "private": true,
   "bin": {
     "task-map-build": "bin/build.mjs",
+    "task-map-serve": "bin/serve.mjs",
     "task-map-validate": "bin/validate.mjs"
   },
   "engines": {
