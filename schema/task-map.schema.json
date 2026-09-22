@@ -1,0 +1,114 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Task map data, format version 1",
+  "description": "Structural shape only. Cross-reference rules (ids exist, parent names a spine node, dep edges are acyclic, edge endpoint kinds) are enforced by src/validate.js and listed in docs/data-format.md.",
+  "type": "object",
+  "required": ["version", "title", "nodes", "edges"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "title": { "type": "string", "minLength": 1, "description": "Shown in the page header." },
+    "source": { "type": "string", "description": "Where the data came from, shown in the footer." },
+    "generatedAt": { "type": "string", "description": "When the adapter ran, shown in the footer." },
+    "kindNames": {
+      "type": "object",
+      "description": "Display names for the four kinds, e.g. {\"milestone\": \"WP\"}.",
+      "additionalProperties": false,
+      "properties": {
+        "milestone": { "type": "string", "minLength": 1 },
+        "gate": { "type": "string", "minLength": 1 },
+        "task": { "type": "string", "minLength": 1 },
+        "issue": { "type": "string", "minLength": 1 }
+      }
+    },
+    "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
+    "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
+  },
+  "$defs": {
+    "status": {
+      "enum": ["done", "todo", "next", "progress", "gate", "review", "failed", "blocked", "open"]
+    },
+    "count": { "type": "integer", "minimum": 0 },
+    "node": {
+      "type": "object",
+      "required": ["id", "kind", "label", "title", "status"],
+      "additionalProperties": false,
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["milestone", "gate", "task", "issue"] },
+        "label": { "type": "string", "minLength": 1 },
+        "title": { "type": "string", "minLength": 1 },
+        "status": { "$ref": "#/$defs/status" },
+        "parent": { "type": "string", "minLength": 1 },
+        "url": { "type": "string" },
+        "urlLabel": { "type": "string" },
+        "detail": { "type": "string" },
+        "queued": { "type": "boolean" },
+        "optional": { "type": "boolean" },
+        "tags": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+        "progress": {
+          "type": "object",
+          "required": ["done", "total"],
+          "additionalProperties": false,
+          "properties": {
+            "done": { "$ref": "#/$defs/count" },
+            "total": { "$ref": "#/$defs/count" },
+            "unit": { "type": "string" }
+          }
+        },
+        "links": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["to", "why", "strong"],
+            "additionalProperties": false,
+            "properties": {
+              "to": { "type": "string", "minLength": 1 },
+              "why": { "type": "string", "minLength": 1 },
+              "strong": { "type": "boolean" }
+            }
+          }
+        },
+        "sections": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["heading"],
+            "additionalProperties": false,
+            "anyOf": [
+              { "required": ["text"] },
+              { "required": ["items"] },
+              { "required": ["refs"] },
+              { "required": ["progress"] }
+            ],
+            "properties": {
+              "heading": { "type": "string", "minLength": 1 },
+              "text": { "type": "string" },
+              "items": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "refs": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+              "progress": {
+                "type": "object",
+                "required": ["done", "total"],
+                "additionalProperties": false,
+                "properties": {
+                  "done": { "$ref": "#/$defs/count" },
+                  "total": { "$ref": "#/$defs/count" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "edge": {
+      "type": "object",
+      "required": ["from", "to", "type"],
+      "additionalProperties": false,
+      "properties": {
+        "from": { "type": "string", "minLength": 1 },
+        "to": { "type": "string", "minLength": 1 },
+        "type": { "enum": ["dep", "gate", "advisory", "resolves"] }
+      }
+    }
+  }
+}

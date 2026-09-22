@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Task map</title>
+<script src="../vendor/dagre.min.js"></script>
+<script src="validate.js"></script>
+<style>
+  :root {
+    --bg: #0e1116;
+    --panel: #151a21;
+    --panel-2: #1b2129;
+    --line: #2a313b;
+    --edge: #5b6573;
+    --text: #d6dde6;
+    --muted: #7d8896;
+    --accent: #f2b441;
+    --done: #3fb68b;
+    --done-fill: #0f2019;
+    --todo: #8b84b8;
+    --next: #c9b8ff;
+    --progress: #f2b441;
+    --gate: #f5c451;
+    --review: #4fd1c5;
+    --failed: #ff5d5d;
+    --blocked: #f08a76;
+    --open: #e58fb8;
+    --queued: #e8a93a;
+    --mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--sans); overflow: hidden; }
+  header {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 12px 16px;
+    padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg);
+    position: relative; z-index: 2;
+  }
+  body.empty header > :not(.brand) { display: none; }
+  .brand { font-weight: 700; font-size: 15px; line-height: 1.1; max-width: 160px; }
+  .brand b { color: var(--accent); }
+  .stats { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(360px, 100%); line-height: 1.45; }
+  .group {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; max-width: 100%;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+  }
+  .group:has(select) { min-width: 0; }
+  .group > span { font-size: 12px; color: var(--muted); padding: 0 6px; }
+  button, select {
+    font: inherit; font-size: 12px; color: var(--text); background: transparent;
+    border: 1px solid transparent; border-radius: 6px; padding: 5px 9px; cursor: pointer;
+  }
+  button:focus-visible, select:focus-visible, .node:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .mode[aria-pressed="true"] { background: var(--panel-2); border-color: var(--line); }
+  .chip { border-color: var(--line); color: var(--muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
+  .chip[aria-pressed="true"] { color: var(--bg); background: var(--c); border-color: var(--c); font-weight: 700; }
+  select { border-color: var(--line); background: var(--panel-2); max-width: 100%; }
+  .legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 3px 12px; max-width: 460px; font-size: 11.5px; color: var(--muted); }
+  .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
+  main { position: absolute; inset: 0; top: var(--header-h, 64px); }
+  svg#map { width: 100%; height: 100%; cursor: grab; display: block; }
+  svg#map.panning { cursor: grabbing; }
+  .edge { fill: none; stroke: var(--edge); stroke-width: 1.2; }
+  .edge.child, .edge.resolves { stroke-dasharray: 2 4; opacity: .8; }
+  .edge.gate { stroke: var(--gate); stroke-dasharray: 6 4; opacity: .55; }
+  .edge.advisory { stroke: var(--next); stroke-dasharray: 2 5; opacity: .7; }
+  .edge.link { stroke: var(--open); stroke-dasharray: 6 3; stroke-width: 1.6; }
+  .edge.link.weak { stroke: var(--muted); stroke-dasharray: 1 4; stroke-width: 1.4; }
+  .edge.hot { stroke: var(--text); opacity: 1; stroke-width: 1.8; }
+  .node { cursor: pointer; }
+  .node .shape { stroke-width: 1.5; fill: var(--panel); }
+  .node text { font-family: var(--mono); fill: var(--text); pointer-events: none; }
+  .node .id { font-size: 11px; font-weight: 700; }
+  .node .status { font-size: 8px; font-weight: 700; letter-spacing: .04em; }
+  .node .sub { font-size: 8.5px; fill: var(--muted); }
+  .node.dim { opacity: .25; }
+  .node.selected .shape { stroke-width: 3; }
+  .s-done .shape { stroke: var(--done); fill: var(--done-fill); }
+  .ticket.s-done .shape { stroke-dasharray: 3 3; opacity: .7; }
+  .ticket.s-done text { opacity: .75; }
+  .s-todo .shape { stroke: var(--todo); }
+  .s-next .shape { stroke: var(--next); fill: #1f1a33; }
+  .s-progress .shape { stroke: var(--progress); fill: #2a2110; }
+  .s-review .shape { stroke: var(--review); fill: #0f2624; }
+  .s-blocked .shape { stroke: var(--blocked); fill: #2b1813; }
+  .s-open .shape { stroke: var(--open); fill: #2a1520; }
+  .s-gate .shape { stroke: var(--gate); fill: #2a2410; stroke-dasharray: 7 4; animation: march 1s linear infinite; }
+  .s-failed .shape { stroke: var(--failed); fill: #3a1414; animation: pulse 1.4s ease-in-out infinite; }
+  .queued .shape { stroke: var(--queued); fill: #2a2110; stroke-dasharray: 4 2; }
+  .queued .shape-inner { fill: none; stroke: var(--queued); stroke-width: 1.2; stroke-dasharray: 4 2; }
+  .milestone .shape, .gate .shape { stroke-width: 2; }
+  .optional .shape { stroke-dasharray: 5 3; }
+  .bug-mark { fill: var(--failed); }
+  @keyframes march { to { stroke-dashoffset: -22; } }
+  @keyframes pulse { 0%, 100% { filter: drop-shadow(0 0 1px var(--failed)); } 50% { filter: drop-shadow(0 0 9px var(--failed)); } }
+  @media (prefers-reduced-motion: reduce) { .s-gate .shape, .s-failed .shape { animation: none; } }
+  .tray-label { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+  footer {
+    position: absolute; right: 16px; bottom: 10px; left: 16px; font-family: var(--mono); font-size: 11px; color: var(--muted);
+    pointer-events: none; text-align: right;
+  }
+  aside {
+    position: absolute; top: var(--header-h, 64px); right: 0; bottom: 0; width: min(380px, 100vw);
+    background: var(--panel); border-left: 1px solid var(--line); padding: 16px 18px 24px; overflow-y: auto;
+    transform: translateX(100%); transition: transform .18s ease-out; z-index: 3;
+  }
+  aside.open { transform: none; }
+  aside h2 { font-size: 15px; margin: 6px 0 4px; line-height: 1.35; }
+  aside h3 { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin: 18px 0 6px; }
+  aside p, aside li { font-size: 13px; line-height: 1.5; }
+  aside ul { padding-left: 18px; margin: 0; }
+  aside a { color: var(--review); }
+  .kicker { font-family: var(--mono); font-size: 12px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+  .pill { font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; padding: 2px 7px; border-radius: 99px; color: var(--bg); background: var(--c); font-weight: 700; }
+  .refs { display: flex; flex-wrap: wrap; gap: 6px; }
+  .refs button, .links button { border-color: var(--line); font-family: var(--mono); font-size: 11px; padding: 3px 7px; }
+  .links { list-style: none; padding: 0; margin: 0; display: grid; gap: 6px; }
+  .links li { display: flex; gap: 8px; align-items: baseline; font-size: 12.5px; color: var(--muted); }
+  .links li button { flex: none; }
+  .bar { height: 6px; background: var(--line); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar > div { height: 100%; background: var(--done); }
+  .close { position: absolute; top: 10px; right: 10px; font-size: 18px; color: var(--muted); }
+  .message {
+    position: absolute; inset: 0; display: grid; place-items: center; padding: 16px;
+    color: var(--muted); font-family: var(--mono); font-size: 13px; text-align: center;
+  }
+  .message > div { max-width: 720px; }
+  .message h2 { color: var(--text); font-family: var(--sans); font-size: 18px; margin: 0 0 10px; }
+  .message ol { text-align: left; max-height: 50vh; overflow-y: auto; padding-left: 22px; }
+  .message li { margin: 4px 0; }
+  .message code { color: var(--text); }
+  .drop { border: 2px dashed var(--line); border-radius: 12px; padding: 32px 24px; }
+  .drop.over { border-color: var(--accent); color: var(--text); }
+  .drop label { color: var(--review); cursor: pointer; text-decoration: underline; }
+</style>
+</head>
+<body>
+<header>
+  <div class="brand" id="brand">Task map</div>
+  <div class="stats" id="stats"></div>
+  <div class="group" role="group" aria-label="View">
+    <button class="mode" data-mode="frontier">frontier</button>
+    <button class="mode" data-mode="all">all tasks</button>
+  </div>
+  <div class="group" role="group" aria-label="Show statuses" id="chips"><span>show:</span></div>
+  <div class="group"><span>focus:</span><select id="focus" aria-label="Focus"></select></div>
+  <button class="chip" id="fit" style="--c: var(--text)">fit</button>
+  <div class="legend" id="legend"></div>
+</header>
+<main><svg id="map" role="img" aria-label="Task map"><g id="viewport"></g></svg></main>
+<aside id="panel" aria-live="polite"></aside>
+<footer id="footer"></footer>
+<script>
+const BAKED = /*__TASK_MAP_DATA__*/null;
+
+let DATA = null;
+const STATUSES = [
+  ['done', 'done', '✓ done'],
+  ['todo', 'todo', 'todo'],
+  ['next', 'up next', 'up next'],
+  ['progress', 'in progress', 'in progress'],
+  ['gate', 'in the gate', 'in the gate (moving dashes)'],
+  ['review', 'in review', 'in review'],
+  ['failed', 'failed', 'failed (pulsing)'],
+  ['blocked', 'blocked', 'blocked'],
+  ['open', 'open issue', 'open issue'],
+];
+const PRESETS = {
+  frontier: new Set(['next', 'progress', 'gate', 'review', 'failed', 'blocked', 'open']),
+  all: new Set(STATUSES.map(([key]) => key)),
+};
+const SPINE = new Set(['milestone', 'gate']);
+const DEFAULT_KIND_NAMES = { milestone: 'milestone', gate: 'gate', task: 'task', issue: 'issue' };
+const NS = 'http://www.w3.org/2000/svg';
+
+const state = { mode: 'frontier', show: new Set(PRESETS.frontier), focus: '', selected: null, view: { x: 0, y: 0, k: 1 } };
+let kindNames = DEFAULT_KIND_NAMES;
+// DATA.edges plus a child edge from every ticket's parent, which the format expresses as a field.
+let edges = [];
+const byId = new Map();
+const outgoing = new Map();
+const incoming = new Map();
+// Node id -> the nodes whose links name it, with each link's reason.
+const linkedFrom = new Map();
+// Node id -> its laid-out box, for drawing links outside the dagre layout.
+const positions = new Map();
+
+function el(tag, attrs = {}, parent) {
+  const node = document.createElementNS(NS, tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  if (parent) parent.appendChild(node);
+  return node;
+}
+
+function html(tag, attrs = {}, text) {
+  const node = document.createElement(tag);
+  for (const [key, value] of Object.entries(attrs)) node.setAttribute(key, value);
+  if (text !== undefined) node.textContent = text;
+  return node;
+}
+
+function truncate(text, max) {
+  return text.length <= max ? text : text.slice(0, max - 1) + '…';
+}
+
+function statusLabel(status) {
+  return (STATUSES.find(([key]) => key === status) || [, status])[1];
+}
+
+function index() {
+  edges = [
+    ...DATA.edges,
+    ...DATA.nodes.filter(node => node.parent).map(node => ({ from: node.parent, to: node.id, type: 'child' })),
+  ];
+  for (const node of DATA.nodes) {
+    byId.set(node.id, node);
+    outgoing.set(node.id, []);
+    incoming.set(node.id, []);
+  }
+  for (const edge of edges) {
+    outgoing.get(edge.from).push(edge);
+    incoming.get(edge.to).push(edge);
+  }
+  for (const node of DATA.nodes) {
+    for (const link of node.links || []) {
+      if (!linkedFrom.has(link.to)) linkedFrom.set(link.to, []);
+      linkedFrom.get(link.to).push({ ...link, from: node.id });
+    }
+  }
+}
+
+// Links touching the selected node: its own, plus every link naming it.
+function selectedLinks(id) {
+  if (!id) return [];
+  const own = (byId.get(id).links || []).map(link => ({ ...link, from: id }));
+  return [...own, ...(linkedFrom.get(id) || [])];
+}
+
+function linkPath(from, to) {
+  const a = positions.get(from);
+  const b = positions.get(to);
+  const rightward = b.x >= a.x;
+  const sx = a.x + (rightward ? a.width / 2 : -a.width / 2);
+  const tx = b.x + (rightward ? -b.width / 2 : b.width / 2);
+  const bend = Math.max(40, Math.abs(tx - sx) / 2) * (rightward ? 1 : -1);
+  return `M${sx},${a.y} C${sx + bend},${a.y} ${tx - bend},${b.y} ${tx},${b.y}`;
+}
+
+// Drop spine edges already implied by a longer path, so a milestone that depends on
+// twenty earlier ones draws the one or two that matter.
+function reducedSpineEdges() {
+  const spineEdges = edges.filter(e => (e.type === 'dep' || e.type === 'gate')
+    && SPINE.has(byId.get(e.from).kind) && SPINE.has(byId.get(e.to).kind));
+  const next = new Map();
+  for (const e of spineEdges) (next.get(e.from) || next.set(e.from, []).get(e.from)).push(e.to);
+  const reachable = (from, target) => {
+    const stack = (next.get(from) || []).filter(n => n !== target);
+    const seen = new Set(stack);
+    while (stack.length) {
+      const current = stack.pop();
+      if (current === target) return true;
+      for (const n of next.get(current) || []) if (!seen.has(n)) { seen.add(n); stack.push(n); }
+    }
+    return false;
+  };
+  return new Set(spineEdges.filter(e => reachable(e.from, e.to)));
+}
+
+function lineage(id) {
+  const keep = new Set([id]);
+  const walk = (map, key) => {
+    const stack = [id];
+    while (stack.length) {
+      for (const e of map.get(stack.pop()) || []) {
+        if (e.type !== 'dep' && e.type !== 'gate') continue;
+        const other = e[key];
+        if (!keep.has(other) && SPINE.has(byId.get(other).kind)) { keep.add(other); stack.push(other); }
+      }
+    }
+  };
+  walk(incoming, 'from');
+  walk(outgoing, 'to');
+  return keep;
+}
+
+function visibleNodes() {
+  const spineScope = state.focus ? lineage(state.focus) : null;
+  const visible = new Set();
+  for (const node of DATA.nodes) {
+    if (SPINE.has(node.kind) && (!spineScope || spineScope.has(node.id))) visible.add(node.id);
+  }
+  for (const node of DATA.nodes) {
+    if (SPINE.has(node.kind) || !state.show.has(node.status)) continue;
+    if (node.parent ? visible.has(node.parent) : !state.focus) visible.add(node.id);
+  }
+  return visible;
+}
+
+const measureContext = document.createElement('canvas').getContext('2d');
+
+function textWidth(text, font) {
+  measureContext.font = font;
+  return measureContext.measureText(text).width;
+}
+
+const ID_FONT = '700 11px ui-monospace, "SF Mono", Menlo, monospace';
+const STATUS_FONT = '700 8px ui-monospace, "SF Mono", Menlo, monospace';
+const SUB_FONT = '8.5px ui-monospace, "SF Mono", Menlo, monospace';
+const TITLE_CHARS = 40;
+
+function size(node) {
+  if (node.kind === 'milestone') return { width: textWidth(pillText(node), ID_FONT) + 28, height: 24 };
+  const widest = Math.max(textWidth(ticketId(node), ID_FONT), textWidth(statusLine(node), STATUS_FONT),
+    textWidth(truncate(node.title, TITLE_CHARS), SUB_FONT));
+  const pointedEnds = node.status === 'failed' ? 20 : 0;
+  return { width: Math.max(node.kind === 'gate' ? 130 : 120, widest + 24 + pointedEnds), height: 46 };
+}
+
+function tick(node) {
+  return node.status === 'done' ? '✓ ' : '';
+}
+
+function progressText(node) {
+  if (!node.progress) return '';
+  const { done, total, unit } = node.progress;
+  return ` · ${done}/${total}${unit ? ` ${unit}` : ''}`;
+}
+
+function pillText(node) {
+  return `${tick(node)}${node.label}${progressText(node)}`;
+}
+
+function ticketId(node) {
+  return `${tick(node)}${node.label}${node.kind === 'gate' ? progressText(node) : ''}`;
+}
+
+function statusWord(node) {
+  return node.queued ? 'QUEUED' : statusLabel(node.status).toUpperCase();
+}
+
+// A ticket's middle line: where it hangs, its status, and the one fact that status needs.
+// The adapter supplies that fact as `detail`; the first tag stands in when it does not.
+function statusLine(node) {
+  const parts = [];
+  if (!SPINE.has(node.kind)) {
+    const parent = node.parent && byId.get(node.parent);
+    if (parent && !node.label.startsWith(parent.label)) parts.push(parent.label);
+    else if (!parent && node.links?.length) parts.push(`→ ${node.links.map(link => byId.get(link.to).label).join(', ')}`);
+    else if (!parent) parts.push('no anchor');
+  }
+  parts.push(statusWord(node));
+  const fact = node.detail || node.tags?.[0];
+  if (fact) parts.push(fact);
+  return truncate(parts.join(' · '), 44);
+}
+
+function smoothPath(points) {
+  let d = `M${points[0].x},${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    d += ` C${p1.x + (p2.x - p0.x) / 6},${p1.y + (p2.y - p0.y) / 6} ${p2.x - (p3.x - p1.x) / 6},${p2.y - (p3.y - p1.y) / 6} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+
+function drawShape(group, node, w, h) {
+  const x = -w / 2;
+  const y = -h / 2;
+  if (node.status === 'failed') {
+    const c = 10;
+    el('polygon', { class: 'shape', points: `${x + c},${y} ${x + w - c},${y} ${x + w},0 ${x + w - c},${y + h} ${x + c},${y + h} ${x},0` }, group);
+  } else if (node.kind === 'gate') {
+    const c = 8;
+    el('polygon', { class: 'shape', points: `${x + c},${y} ${x + w - c},${y} ${x + w},${y + c} ${x + w},${y + h - c} ${x + w - c},${y + h} ${x + c},${y + h} ${x},${y + h - c} ${x},${y + c}` }, group);
+  } else {
+    const radius = node.kind === 'milestone' || node.status === 'gate' ? h / 2 : 3;
+    el('rect', { class: 'shape', x, y, width: w, height: h, rx: radius }, group);
+    if (node.queued) el('rect', { class: 'shape-inner', x: x + 3, y: y + 3, width: w - 6, height: h - 6, rx: 2 }, group);
+  }
+}
+
+function render() {
+  const viewport = document.getElementById('viewport');
+  viewport.replaceChildren();
+  const visible = visibleNodes();
+  const redundant = reducedSpineEdges();
+  const graph = new dagre.graphlib.Graph({ multigraph: true });
+  graph.setGraph({ rankdir: 'LR', ranksep: 48, nodesep: 18, edgesep: 6, marginx: 40, marginy: 40 });
+  graph.setDefaultEdgeLabel(() => ({}));
+
+  const loose = [];
+  for (const id of visible) {
+    const node = byId.get(id);
+    if (!SPINE.has(node.kind) && !node.parent && !incoming.get(id).some(e => visible.has(e.from))
+        && !outgoing.get(id).some(e => visible.has(e.to))) {
+      loose.push(node);
+      continue;
+    }
+    graph.setNode(id, size(node));
+  }
+  const drawn = edges.filter(e => graph.hasNode(e.from) && graph.hasNode(e.to)
+    && !redundant.has(e) && (e.type !== 'advisory' || state.selected === e.from));
+  drawn.forEach((e, i) => {
+    const weight = { dep: 4, gate: 2, child: 1, resolves: 1, advisory: 0 }[e.type];
+    graph.setEdge(e.from, e.to, { weight, minlen: 1 }, String(i));
+  });
+  dagre.layout(graph);
+
+  const layout = graph.graph();
+  let bottom = layout.height || 0;
+  if (loose.length) {
+    const maxRow = Math.max(900, layout.width || 0);
+    const top = bottom + 40;
+    el('text', { class: 'tray-label', x: 40, y: top - 10 }, viewport).textContent =
+      `no ${kindNames.milestone} or ${kindNames.gate} anchor`;
+    let x = 40;
+    let y = top;
+    for (const node of loose) {
+      const { width, height } = size(node);
+      if (x + width > maxRow) { x = 40; y += height + 12; }
+      graph.setNode(node.id, { width, height, x: x + width / 2, y: y + height / 2 });
+      x += width + 12;
+    }
+    bottom = y + 58;
+  }
+
+  const edgeLayer = el('g', {}, viewport);
+  el('g', { id: 'link-layer' }, viewport);
+  const nodeLayer = el('g', {}, viewport);
+  positions.clear();
+  for (const id of graph.nodes()) positions.set(id, graph.node(id));
+  const marker = el('marker', { id: 'arrow', viewBox: '0 0 8 8', refX: 7, refY: 4, markerWidth: 6, markerHeight: 6, orient: 'auto-start-reverse' }, el('defs', {}, edgeLayer));
+  el('path', { d: 'M0,0 L8,4 L0,8 z', style: 'fill: var(--edge)' }, marker);
+
+  drawn.forEach((e, i) => {
+    const points = graph.edge(e.from, e.to, String(i)).points;
+    const path = el('path', { class: `edge ${e.type}`, d: smoothPath(points), 'marker-end': 'url(#arrow)' }, edgeLayer);
+    path.dataset.from = e.from;
+    path.dataset.to = e.to;
+  });
+
+  for (const id of graph.nodes()) {
+    const node = byId.get(id);
+    const box = graph.node(id);
+    const kindClass = SPINE.has(node.kind) ? node.kind : 'ticket';
+    const group = el('g', {
+      class: `node ${kindClass} s-${node.status}${node.queued ? ' queued' : ''}${node.optional ? ' optional' : ''}${state.selected === id ? ' selected' : ''}`,
+      transform: `translate(${box.x},${box.y})`, tabindex: 0, role: 'button',
+      'aria-label': `${node.label}, ${statusLabel(node.status)}: ${node.title}`,
+    }, nodeLayer);
+    group.dataset.id = id;
+    el('title', {}, group).textContent = `${node.label} · ${statusLabel(node.status)}\n${node.title}`;
+    drawShape(group, node, box.width, box.height);
+    if (node.kind === 'milestone') {
+      el('text', { class: 'id', 'text-anchor': 'middle', y: 4 }, group).textContent = pillText(node);
+    } else {
+      el('text', { class: 'id', 'text-anchor': 'middle', y: -8 }, group).textContent = ticketId(node);
+      el('text', { class: 'status', 'text-anchor': 'middle', y: 4, style: `fill: var(--${node.queued ? 'queued' : node.status})` }, group)
+        .textContent = statusLine(node);
+      el('text', { class: 'sub', 'text-anchor': 'middle', y: 15 }, group).textContent = truncate(node.title, TITLE_CHARS);
+      if ((node.tags || []).includes('bug')) el('rect', { class: 'bug-mark', x: -box.width / 2, y: -box.height / 2, width: 3, height: box.height }, group);
+    }
+  }
+
+  renderStats(visible);
+  highlight();
+  return { width: layout.width || 0, height: bottom };
+}
+
+let bounds = { width: 0, height: 0 };
+
+function renderStats(visible) {
+  const all = DATA.nodes;
+  const count = status => all.filter(n => n.status === status).length;
+  const hidden = STATUSES.filter(([key]) => !state.show.has(key)).map(([, label]) => label);
+  const active = all.filter(n => n.status !== 'done').length;
+  document.getElementById('stats').textContent = [
+    `${active} active`, `${count('done')}/${all.length} done`, state.focus ? `focus ${byId.get(state.focus).label}` : state.mode,
+    hidden.length ? `hiding ${hidden.join('/')}` : 'showing everything',
+    `${count('failed')} failed`, `${count('gate')} in the gate`, `${count('review')} in review`, `${count('next')} next`,
+    `${visible.size} drawn`,
+  ].join(' · ');
+}
+
+function applyView() {
+  const { x, y, k } = state.view;
+  document.getElementById('viewport').setAttribute('transform', `translate(${x},${y}) scale(${k})`);
+}
+
+function fit() {
+  const svg = document.getElementById('map');
+  const { width, height } = svg.getBoundingClientRect();
+  const panelWidth = document.getElementById('panel').classList.contains('open') ? 380 : 0;
+  const k = Math.min(1.6, (width - panelWidth - 32) / Math.max(bounds.width, 1), (height - 48) / Math.max(bounds.height, 1));
+  state.view = { k, x: (width - panelWidth - bounds.width * k) / 2, y: (height - bounds.height * k) / 2 };
+  applyView();
+}
+
+function redraw(refit) {
+  bounds = render();
+  if (refit) fit();
+  else applyView();
+}
+
+function highlight() {
+  const id = state.selected;
+  const near = new Set(id ? [id] : []);
+  if (id) {
+    for (const e of outgoing.get(id)) near.add(e.to);
+    for (const e of incoming.get(id)) near.add(e.from);
+  }
+  const linkLayer = document.getElementById('link-layer');
+  linkLayer.replaceChildren();
+  for (const link of selectedLinks(id)) {
+    if (!positions.has(link.from) || !positions.has(link.to)) continue;
+    near.add(link.from);
+    near.add(link.to);
+    const path = el('path', { class: `edge link${link.strong ? '' : ' weak'}`, d: linkPath(link.from, link.to) }, linkLayer);
+    el('title', {}, path).textContent = `${byId.get(link.from).label} → ${byId.get(link.to).label}: ${link.why}`;
+  }
+  document.querySelectorAll('.node').forEach(g => {
+    g.classList.toggle('dim', Boolean(id) && !near.has(g.dataset.id));
+    g.classList.toggle('selected', g.dataset.id === id);
+  });
+  document.querySelectorAll('.edge').forEach(p => p.classList.toggle('hot', Boolean(id) && (p.dataset.from === id || p.dataset.to === id)));
+}
+
+function refButtons(ids) {
+  const wrap = html('div', { class: 'refs' });
+  for (const id of ids) {
+    const node = byId.get(id);
+    if (!node) continue;
+    const button = html('button', { title: node.title }, `${tick(node)}${node.label}`);
+    button.style.borderColor = button.style.color = `var(--${node.status})`;
+    button.addEventListener('click', () => select(id, true));
+    wrap.appendChild(button);
+  }
+  return wrap;
+}
+
+function linkList(rows) {
+  if (!rows.length) return null;
+  const ul = html('ul', { class: 'links' });
+  for (const { id, why } of rows) {
+    const li = html('li');
+    li.appendChild(refButtons([id]).firstChild);
+    li.appendChild(html('span', {}, why));
+    ul.appendChild(li);
+  }
+  return ul;
+}
+
+function progressBar({ done, total }) {
+  const wrap = html('div');
+  wrap.appendChild(html('p', {}, `${done} of ${total}`));
+  const bar = html('div', { class: 'bar' });
+  bar.appendChild(html('div', { style: `width:${total ? (100 * done / total).toFixed(0) : 0}%` }));
+  wrap.appendChild(bar);
+  return wrap;
+}
+
+function section(panel, title, content) {
+  if (!content) return;
+  panel.appendChild(html('h3', {}, title));
+  panel.appendChild(content);
+}
+
+// An adapter's own section: any mix of text, a list, node references, and a progress bar.
+function customSection(panel, { heading, text, items, refs, progress }) {
+  const wrap = html('div');
+  if (text) wrap.appendChild(html('p', {}, text));
+  if (items?.length) {
+    const ul = html('ul');
+    for (const item of items) ul.appendChild(html('li', {}, item));
+    wrap.appendChild(ul);
+  }
+  if (refs?.length) wrap.appendChild(refButtons(refs));
+  if (progress) wrap.appendChild(progressBar(progress));
+  section(panel, heading, wrap);
+}
+
+function related(id, direction, type) {
+  const list = direction === 'out' ? outgoing.get(id) : incoming.get(id);
+  return list.filter(e => e.type === type).map(e => (direction === 'out' ? e.to : e.from));
+}
+
+function openPanel(node) {
+  const panel = document.getElementById('panel');
+  panel.replaceChildren();
+  const close = html('button', { class: 'close', 'aria-label': 'Close details' }, '×');
+  close.addEventListener('click', () => select(null));
+  panel.appendChild(close);
+  const kicker = html('div', { class: 'kicker' });
+  kicker.appendChild(html('span', {}, `${kindNames[node.kind]} · ${node.label}`));
+  kicker.appendChild(html('span', { class: 'pill', style: `--c: var(--${node.queued ? 'queued' : node.status})` },
+    node.queued ? 'queued' : statusLabel(node.status)));
+  panel.appendChild(kicker);
+  panel.appendChild(html('h2', {}, node.title));
+  if (node.url) {
+    const links = html('p');
+    links.appendChild(html('a', { href: node.url, target: '_blank', rel: 'noopener' }, `${node.urlLabel || 'open in tracker'} ↗`));
+    panel.appendChild(links);
+  }
+  if (node.detail) panel.appendChild(html('p', {}, node.detail));
+
+  for (const custom of node.sections || []) customSection(panel, custom);
+  if (node.progress && SPINE.has(node.kind)) section(panel, `Progress${node.progress.unit ? ` (${node.progress.unit})` : ''}`, progressBar(node.progress));
+  if (node.tags?.length) section(panel, 'Tags', html('p', {}, node.tags.join(', ')));
+  if (node.parent) section(panel, 'Part of', refButtons([node.parent]));
+  const children = related(node.id, 'out', 'child');
+  if (children.length) section(panel, `Hanging off this ${kindNames[node.kind]}`, refButtons(children));
+  section(panel, 'Runs after', related(node.id, 'in', 'gate').length ? refButtons(related(node.id, 'in', 'gate')) : null);
+  section(panel, 'Advises (advisory)', related(node.id, 'out', 'advisory').length ? refButtons(related(node.id, 'out', 'advisory')) : null);
+  const deps = related(node.id, 'in', 'dep');
+  if (deps.length) section(panel, 'Depends on', refButtons(deps));
+  const unblocks = related(node.id, 'out', 'dep');
+  if (unblocks.length) section(panel, 'Unblocks', refButtons(unblocks));
+  const resolves = [...related(node.id, 'in', 'resolves'), ...related(node.id, 'out', 'resolves')];
+  if (resolves.length) section(panel, node.kind === 'issue' ? 'Resolved by' : 'Resolves', refButtons(resolves));
+  section(panel, 'Linked to', linkList((node.links || []).map(link => ({
+    id: link.to, why: link.to === node.parent ? `${link.why} · placed here` : link.why,
+  }))));
+  const linked = (linkedFrom.get(node.id) || []).slice().sort((a, b) => b.strong - a.strong);
+  section(panel, 'Linked from', linkList(linked.map(link => ({ id: link.from, why: link.why }))));
+  panel.classList.add('open');
+}
+
+function center(id) {
+  const box = positions.get(id);
+  if (!box) return;
+  const { width, height } = document.getElementById('map').getBoundingClientRect();
+  state.view.x = (width - 380) / 2 - box.x * state.view.k;
+  state.view.y = height / 2 - box.y * state.view.k;
+  applyView();
+}
+
+function select(id, recenter) {
+  const previous = state.selected;
+  state.selected = id;
+  const node = id && byId.get(id);
+  const hidden = node && !positions.has(id);
+  if (hidden) {
+    state.show.add(node.status);
+    if (state.focus && !lineage(state.focus).has(node.parent || id)) state.focus = '';
+    document.getElementById('focus').value = state.focus;
+  }
+  const advisoryChanged = [previous, id].some(n => n && byId.get(n)?.kind === 'gate');
+  if (hidden || advisoryChanged) { syncControls(); redraw(false); } else highlight();
+  if (node) {
+    openPanel(node);
+    if (recenter) center(id);
+  } else {
+    document.getElementById('panel').classList.remove('open');
+  }
+}
+
+function syncControls() {
+  const matches = Object.entries(PRESETS).find(([, set]) => set.size === state.show.size && [...set].every(s => state.show.has(s)));
+  state.mode = matches ? matches[0] : 'custom';
+  document.querySelectorAll('.mode').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.mode === state.mode)));
+  document.querySelectorAll('#chips .chip').forEach(b => b.setAttribute('aria-pressed', String(state.show.has(b.dataset.status))));
+}
+
+function legendItem(color, text) {
+  const item = html('span', { style: `--c: var(--${color})` });
+  item.appendChild(html('i'));
+  item.appendChild(document.createTextNode(text));
+  return item;
+}
+
+function buildControls() {
+  document.title = DATA.title;
+  const words = DATA.title.split(' ');
+  const brand = document.getElementById('brand');
+  brand.replaceChildren(document.createTextNode(`${words[0]} `), html('b', {}, words.slice(1).join(' ')));
+  const chips = document.getElementById('chips');
+  const legend = document.getElementById('legend');
+  for (const [key, short, long] of STATUSES) {
+    const chip = html('button', { class: 'chip', style: `--c: var(--${key})` }, short);
+    chip.dataset.status = key;
+    chip.addEventListener('click', () => {
+      state.show.has(key) ? state.show.delete(key) : state.show.add(key);
+      syncControls();
+      redraw(true);
+    });
+    chips.appendChild(chip);
+    legend.appendChild(legendItem(key, long));
+    if (key === 'next') legend.appendChild(legendItem('queued', 'queued (double dashes)'));
+  }
+  document.querySelectorAll('.mode').forEach(button => button.addEventListener('click', () => {
+    state.show = new Set(PRESETS[button.dataset.mode]);
+    syncControls();
+    redraw(true);
+  }));
+  const focus = document.getElementById('focus');
+  focus.appendChild(html('option', { value: '' }, 'whole map'));
+  for (const node of DATA.nodes.filter(n => SPINE.has(n.kind))) {
+    focus.appendChild(html('option', { value: node.id }, `${node.label} · ${truncate(node.title, 36)}`));
+  }
+  focus.addEventListener('change', () => { state.focus = focus.value; redraw(true); });
+  document.getElementById('fit').addEventListener('click', fit);
+  document.getElementById('footer').textContent = [
+    'scroll = zoom · drag = pan · click a node for details',
+    `solid = dependency · dashed amber = ${kindNames.gate} · dotted = ${kindNames.milestone} → what hangs off it`,
+    'select a node to see its links (pink = declared, grey = mentioned)',
+    DATA.source, DATA.generatedAt && `generated ${DATA.generatedAt}`,
+  ].filter(Boolean).join(' · ');
+  syncControls();
+}
+
+function bindViewport() {
+  const svg = document.getElementById('map');
+  svg.addEventListener('wheel', event => {
+    event.preventDefault();
+    const rect = svg.getBoundingClientRect();
+    const px = event.clientX - rect.left;
+    const py = event.clientY - rect.top;
+    const k = Math.min(4, Math.max(0.15, state.view.k * Math.exp(-event.deltaY * 0.0015)));
+    state.view.x = px - (px - state.view.x) * (k / state.view.k);
+    state.view.y = py - (py - state.view.y) * (k / state.view.k);
+    state.view.k = k;
+    applyView();
+  }, { passive: false });
+  let drag = null;
+  svg.addEventListener('pointerdown', event => {
+    drag = { x: event.clientX, y: event.clientY, vx: state.view.x, vy: state.view.y, moved: false };
+    svg.setPointerCapture(event.pointerId);
+  });
+  svg.addEventListener('pointermove', event => {
+    if (!drag) return;
+    const dx = event.clientX - drag.x;
+    const dy = event.clientY - drag.y;
+    if (Math.abs(dx) + Math.abs(dy) > 3) { drag.moved = true; svg.classList.add('panning'); }
+    state.view.x = drag.vx + dx;
+    state.view.y = drag.vy + dy;
+    applyView();
+  });
+  svg.addEventListener('pointerup', event => {
+    const moved = drag?.moved;
+    drag = null;
+    svg.classList.remove('panning');
+    if (moved) return;
+    const target = document.elementsFromPoint(event.clientX, event.clientY).find(n => n.closest?.('.node'));
+    const id = target?.closest('.node').dataset.id || null;
+    select(id === state.selected ? null : id);
+  });
+  svg.addEventListener('keydown', event => {
+    const id = event.target.closest?.('.node')?.dataset.id;
+    if (id && (event.key === 'Enter' || event.key === ' ')) { event.preventDefault(); select(id); }
+  });
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') select(null);
+    if (event.key === 'f' && event.target === document.body) fit();
+  });
+  new ResizeObserver(() => {
+    document.documentElement.style.setProperty('--header-h', `${document.querySelector('header').offsetHeight}px`);
+  }).observe(document.querySelector('header'));
+}
+
+function showMessage(...children) {
+  const wrap = html('div', { class: 'message' });
+  const inner = html('div');
+  inner.append(...children);
+  wrap.appendChild(inner);
+  document.querySelector('main').replaceChildren(wrap);
+  return inner;
+}
+
+function showErrors(errors) {
+  const list = html('ol');
+  for (const { path, message } of errors.slice(0, 50)) {
+    const li = html('li');
+    li.append(html('code', {}, path), document.createTextNode(` ${message}`));
+    list.appendChild(li);
+  }
+  const more = errors.length > 50 ? ` (first 50 of ${errors.length})` : '';
+  showMessage(html('h2', {}, `This data does not match the task-map format${more}`), list,
+    html('p', {}, 'Run node bin/validate.mjs <file> for the full list. docs/data-format.md explains each rule.'));
+}
+
+function load(data) {
+  if (typeof dagre === 'undefined') {
+    showMessage(html('h2', {}, 'The layout library did not load'), html('p', {}, 'Build the page with bin/build.mjs, which inlines vendor/dagre.min.js.'));
+    return;
+  }
+  const { errors, warnings } = taskMapValidate.validate(data);
+  if (errors.length) { showErrors(errors); return; }
+  for (const { path, message } of warnings) console.warn(`task-map: ${path} ${message}`);
+  DATA = data;
+  document.body.classList.remove('empty');
+  kindNames = { ...DEFAULT_KIND_NAMES, ...(data.kindNames || {}) };
+  document.querySelector('main').replaceChildren(document.querySelector('main svg') || html('div'));
+  index();
+  buildControls();
+  bindViewport();
+  document.documentElement.style.setProperty('--header-h', `${document.querySelector('header').offsetHeight}px`);
+  redraw(true);
+}
+
+function readFile(file) {
+  file.text().then(text => {
+    try { load(JSON.parse(text)); } catch (error) { showErrors([{ path: file.name, message: `is not valid JSON: ${error.message}` }]); }
+  });
+}
+
+// No data baked in: take it from ?data=<url> (needs http, not file://) or a dropped file.
+function waitForData() {
+  const url = new URLSearchParams(location.search).get('data');
+  if (url) {
+    fetch(url).then(response => {
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      return response.json();
+    }).then(load, error => showErrors([{ path: url, message: `could not be loaded: ${error.message}` }]));
+    return;
+  }
+  const svg = document.querySelector('main svg');
+  const input = html('input', { type: 'file', accept: '.json,application/json', id: 'file', hidden: '' });
+  input.addEventListener('change', () => input.files[0] && readFile(input.files[0]));
+  const drop = html('div', { class: 'drop' });
+  const label = html('label', { for: 'file' }, 'choose a file');
+  drop.append(html('h2', {}, 'Drop a task-map JSON file here'), document.createTextNode('or '), label,
+    document.createTextNode(', or open this page with ?data=<url>'), input);
+  showMessage(drop);
+  const main = document.querySelector('main');
+  main.addEventListener('dragover', event => { event.preventDefault(); drop.classList.add('over'); });
+  main.addEventListener('dragleave', () => drop.classList.remove('over'));
+  main.addEventListener('drop', event => {
+    event.preventDefault();
+    const file = event.dataTransfer.files[0];
+    if (!file) return;
+    main.replaceChildren(svg);
+    readFile(file);
+  });
+  input.addEventListener('change', () => main.replaceChildren(svg), { once: true });
+}
+
+document.body.classList.add('empty');
+if (BAKED) load(BAKED);
+else waitForData();
+</script>
+</body>
+</html>

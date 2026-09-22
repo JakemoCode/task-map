@@ -1,0 +1,15 @@
+{
+  "name": "task-map",
+  "version": "1.0.0",
+  "description": "An interactive, filterable dependency map of a project's milestones, tasks, and issues, rendered from one JSON file any tracker can produce.",
+  "license": "MIT",
+  "private": true,
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "validate": "node bin/validate.mjs",
+    "build": "node bin/build.mjs -o dist/task-map.html && node bin/build.mjs examples/sample.json -o dist/sample.html"
+  }
+}
