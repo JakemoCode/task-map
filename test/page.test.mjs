@@ -210,3 +210,15 @@ test('dropping a second file replaces the data without duplicating the controls'
   assert.equal(await count(page, '#focus option'), 1 + second.nodes.filter(n => n.kind === 'milestone' || n.kind === 'gate').length);
   assert.ok(Math.abs(await wheelRatio(page) - ratio) < 1e-9, 'one wheel notch should zoom by the same factor as before');
 });
+
+test('the drop screen says how to make a data file and how to keep it live', { skip }, async () => {
+  const page = await openViewer();
+  const help = await page.evaluate(`(() => {
+    const drop = document.querySelector('.drop');
+    const link = [...drop.querySelectorAll('a')].find(a => a.textContent === 'AGENTS.md');
+    return { text: drop.textContent, href: link?.href ?? null };
+  })()`);
+  assert.equal(help.href, 'https://github.com/JakemoCode/task-map/blob/main/AGENTS.md');
+  assert.match(help.text, /adapter/);
+  assert.match(help.text, /task-map-serve --adapter "<command>"/);
+});

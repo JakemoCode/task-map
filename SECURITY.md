@@ -6,10 +6,11 @@ Report it privately through **[Security → Report a vulnerability](https://gith
 
 ## What counts
 
-The page is static: it runs entirely in the browser, sends nothing anywhere, and treats every data file as untrusted, since the hosted viewer loads data from any `?data=` URL. In scope:
+The page runs entirely in the browser and treats every data file as untrusted, since the hosted viewer loads data from any `?data=` URL. It sends nothing anywhere; in live mode it only asks the local server that served it for data. In scope:
 
 - Anything in a data file that runs script, or changes the page beyond what the format describes, including through `bin/build.mjs`'s output.
 - A data file that passes `bin/validate.mjs` but breaks or hangs the page.
 - Problems in `bin/` or the build that could affect a machine running them.
+- `task-map-serve` answering anyone but the local user: it binds `127.0.0.1` and refuses a request whose `Host` is not `127.0.0.1` or `localhost` on its own port (DNS rebinding) or whose `Sec-Fetch-Site` is `cross-site`. It sends no CORS headers. An adapter left running after the server stops is in scope too.
 
 Only the latest commit on `main`, and the GitHub Pages site built from it, is supported.

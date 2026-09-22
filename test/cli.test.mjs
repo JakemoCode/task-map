@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { spawnSync } from 'node:child_process';
+import { spawn, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createServer } from 'node:net';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { adapter, alive, hungPids, waitUntil } from './helpers/adapter.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SAMPLE = join(ROOT, 'examples/sample.json');
@@ -13,10 +16,15 @@ const scratch = mkdtempSync(join(tmpdir(), 'task-map-cli-'));
 after(() => rmSync(scratch, { recursive: true, force: true }));
 
 // npm installs each "bin" entry as a symlink in node_modules/.bin; run through one the same way.
-function installed(name) {
+function linked(name) {
   assert.ok(bins[name], `package.json has no bin entry for ${name}`);
   const link = join(scratch, name);
   if (!existsSync(link)) symlinkSync(join(ROOT, bins[name]), link);
+  return link;
+}
+
+function installed(name) {
+  const link = linked(name);
   return (...args) => spawnSync(process.execPath, [link, ...args], { encoding: 'utf8', cwd: scratch });
 }
 
@@ -33,3 +41,51 @@ test('task-map-validate, run as an installed command, reports a valid file', () 
   assert.equal(run.status, 0, run.stderr);
   assert.match(run.stdout, /valid, 28 nodes, 22 edges/);
 });
+
+test('task-map-serve without exactly one of --adapter and --data prints usage and exits 2', () => {
+  const serve = installed('task-map-serve');
+  for (const args of [[], ['--adapter', 'true', '--data', SAMPLE], ['--data']]) {
+    const run = serve(...args);
+    assert.equal(run.status, 2, `${args.join(' ')}: ${run.stderr}`);
+    assert.match(run.stderr, /usage: task-map-serve/);
+  }
+});
+
+test('task-map-serve on a port already in use says to pick another with --port', async () => {
+  const taken = createServer().listen(0, '127.0.0.1');
+  await new Promise(resolve => taken.once('listening', resolve));
+  try {
+    const run = installed('task-map-serve')('--data', SAMPLE, '--port', String(taken.address().port));
+    assert.equal(run.status, 1, run.stderr);
+    assert.match(run.stderr, new RegExp(`port ${taken.address().port} is in use.*--port`));
+  } finally {
+    taken.close();
+  }
+});
+
+// Ctrl-C, a kill, and a closed terminal. The adapter runs in its own process group, so none of these
+// reaches it; task-map-serve has to kill it on the way out.
+for (const [signal, status] of [['SIGINT', 130], ['SIGTERM', 143], ['SIGHUP', 129]]) {
+  test(`${signal} to task-map-serve leaves no adapter process behind`, async t => {
+    const fixture = adapter(join(scratch, `hung-adapter-${signal}`), {}, '--hang');
+    const serve = spawn(process.execPath, [linked('task-map-serve'), '--adapter', fixture.command, '--port', '0'],
+      { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'] });
+    const exited = new Promise(resolve => serve.once('exit', (code, killedBy) => resolve(code ?? killedBy)));
+    let stdout = '';
+    serve.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
+    let pids = [];
+    t.after(() => {
+      serve.kill('SIGKILL');
+      for (const pid of pids) try { process.kill(pid, 'SIGKILL'); } catch {}
+    });
+
+    await waitUntil(() => /http:\/\/\S+/.test(stdout), 'the server prints its address');
+    await fetch(`${/http:\/\/\S+/.exec(stdout)[0]}/data`);
+    pids = await hungPids(fixture);
+    assert.ok(pids.every(alive), 'the adapter and its child are running');
+
+    serve.kill(signal);
+    assert.equal(await exited, status);
+    await waitUntil(() => !pids.some(alive), `no process of ${pids} is left`);
+  });
+}

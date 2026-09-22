@@ -41,3 +41,9 @@ test('the committed builds in dist/ are current', () => {
   assert.equal(read('dist/task-map.html'), build(), 'run npm run build');
   assert.equal(read('dist/sample.html'), build(sample()), 'run npm run build');
 });
+
+test('the committed builds keep live mode off, so the demo pages never poll', () => {
+  for (const file of ['dist/task-map.html', 'dist/sample.html']) {
+    assert.match(read(file), /const LIVE = \/\*__TASK_MAP_LIVE__\*\/null;/, file);
+  }
+});
