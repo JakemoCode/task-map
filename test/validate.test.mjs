@@ -62,6 +62,17 @@ test('node fields', () => {
   expectError(d => { d.nodes[3].tags = ['']; }, '.tags must be an array of non-empty strings');
 });
 
+test('a url must be http or https, since the panel renders it as a link', () => {
+  for (const url of ['javascript:alert(1)', ' JavaScript:alert(1)', 'data:text/html,x', 'example.com/x']) {
+    expectError(d => { d.nodes[0].url = url; }, '.url must start with http:// or https://');
+  }
+  for (const url of ['https://example.com/x', 'HTTP://example.com']) {
+    const data = minimal();
+    data.nodes[0].url = url;
+    assert.deepEqual(validate(data).errors, [], url);
+  }
+});
+
 test('parent must name a spine node, and only tickets have one', () => {
   expectError(d => { d.nodes[3].parent = 'M9'; }, 'which is not a node id');
   expectError(d => { d.nodes[4].parent = 'T1'; }, 'must name a milestone or gate');

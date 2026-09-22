@@ -40,7 +40,7 @@
         "title": { "type": "string", "minLength": 1 },
         "status": { "$ref": "#/$defs/status" },
         "parent": { "type": "string", "minLength": 1 },
-        "url": { "type": "string" },
+        "url": { "type": "string", "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://" },
         "urlLabel": { "type": "string" },
         "detail": { "type": "string" },
         "queued": { "type": "boolean" },

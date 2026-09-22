@@ -80,6 +80,8 @@
       ['url', 'urlLabel', 'detail'].forEach(function (key) {
         if (node[key] !== undefined && typeof node[key] !== 'string') error(at + '.' + key, 'must be a string when present');
       });
+      // The panel renders url as a link, and data can arrive from any ?data= URL: only web links pass.
+      if (typeof node.url === 'string' && !/^https?:\/\//i.test(node.url)) error(at + '.url', 'must start with http:// or https://');
       ['queued', 'optional'].forEach(function (key) {
         if (node[key] !== undefined && typeof node[key] !== 'boolean') error(at + '.' + key, 'must be a boolean when present');
       });

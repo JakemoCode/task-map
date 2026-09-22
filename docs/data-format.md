@@ -42,7 +42,7 @@ The **spine** is the milestones and gates: always drawn, laid out left to right 
 | `optional` | no | boolean | Dashed outline. For work that is planned but not required. |
 | `tags` | no | string[] | Free-form. The first tag stands in for `detail` when there is none; `bug` adds the red bar. |
 | `progress` | no | `{ done, total, unit? }` | Whole numbers, `done <= total`. Shown on milestone pills and gate labels (`M3 · 1/7 tasks`) and as a bar in the panel. |
-| `url` | no | string | Link opened from the panel. |
+| `url` | no | string | Link opened from the panel. Must start with `http://` or `https://`. |
 | `urlLabel` | no | string | Link text. Defaults to "open in tracker". |
 | `links` | no | `{ to, why, strong }[]` | Relations that are not structure: this node names, cites, or mentions another. Drawn only while either end is selected. `strong: true` (pink) for a declared or cited relation, `false` (grey) for a passing mention. `why` is shown in the panel. |
 | `sections` | no | `{ heading, text?, items?, refs?, progress? }[]` | Adapter-defined panel content, rendered in order. Each needs at least one of: `text` (a paragraph), `items` (a bulleted list), `refs` (node ids, rendered as buttons), `progress` (a bar). |
@@ -83,6 +83,7 @@ Errors (the page and `bin/build.mjs` refuse the data):
 - Every node has a unique non-empty `id`, a known `kind` and `status`, and non-empty `label` and `title`.
 - `parent` appears only on tasks and issues, and names a milestone or gate.
 - `queued` appears only with status `next`.
+- `url` starts with `http://` or `https://`. The panel renders it as a link, and a map can load data from any `?data=` URL, so only web links pass.
 - `progress` has whole-number `done` and `total` with `done <= total`.
 - Every `links[].to`, `sections[].refs[]`, `edges[].from`, and `edges[].to` names an existing node.
 - Every link has a non-empty `why` and a boolean `strong`.
