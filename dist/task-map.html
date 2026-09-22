@@ -4054,9 +4054,11 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
     padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg);
     position: relative; z-index: 2;
   }
-  body.empty header > :not(.brand) { display: none; }
+  body.empty header > :not(.brand, .live) { display: none; }
   .brand { font-weight: 700; font-size: 15px; line-height: 1.1; max-width: 160px; }
   .brand b { color: var(--accent); }
+  .live { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(420px, 100%); overflow-wrap: anywhere; }
+  .live[hidden] { display: none; }
   .stats { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(360px, 100%); line-height: 1.45; }
   .group {
     display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; max-width: 100%;
@@ -4156,6 +4158,7 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
 <header>
   <div class="brand" id="brand">Task map</div>
   <div class="stats" id="stats"></div>
+  <div class="live" id="live" role="status" hidden></div>
   <div class="group" role="group" aria-label="View">
     <button class="mode" data-mode="frontier">frontier</button>
     <button class="mode" data-mode="all">all tasks</button>
@@ -4897,8 +4900,58 @@ function waitForData() {
   input.addEventListener('change', showMap, { once: true });
 }
 
+// Live mode: ask the server that served this page for data while the tab is visible. A request
+// that finds the data stale starts a refresh, so while one runs, ask again sooner.
+function live() {
+  const status = document.getElementById('live');
+  status.hidden = false;
+  status.textContent = 'loading…';
+  let shown = null;
+  let timer = null;
+  let asking = false;
+  async function ask() {
+    clearTimeout(timer);
+    if (asking || document.visibilityState !== 'visible') return;
+    asking = true;
+    let running = false;
+    try {
+      const response = await fetch('/data', { cache: 'no-store' });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const current = await response.json();
+      running = current.running;
+      if (current.data && current.updatedAt !== shown) {
+        shown = current.updatedAt;
+        load(current.data);
+      }
+      setLiveStatus(status, current);
+    } catch {
+      status.textContent = 'server unreachable';
+      status.title = '';
+    }
+    asking = false;
+    if (document.visibilityState === 'visible') timer = setTimeout(ask, (running ? Math.min(1, LIVE.poll) : LIVE.poll) * 1000);
+  }
+  document.addEventListener('visibilitychange', ask);
+  ask();
+}
+
+function setLiveStatus(status, { data, checkedAt, error }) {
+  const shortError = error && error.length > 160 ? `${error.slice(0, 160)}…` : error;
+  status.textContent = error ? `refresh failed: ${shortError}${data ? ` · data from ${ago(checkedAt)}` : ''}`
+    : data ? `live · checked ${ago(checkedAt)}` : 'loading…';
+  status.title = error ?? '';
+}
+
+function ago(time) {
+  const seconds = Math.max(0, Math.round((Date.now() - Date.parse(time)) / 1000));
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  return `${Math.floor(seconds / 3600)}h ago`;
+}
+
 document.body.classList.add('empty');
 if (BAKED) load(BAKED);
+else if (LIVE) live();
 else waitForData();
 </script>
 </body>
