@@ -26,7 +26,7 @@ node bin/validate.mjs map.json          # names every problem with its path
 node bin/build.mjs map.json -o map.html # one self-contained file to open or share
 ```
 
-`docs/data-format.md` is the full reference. Node 20 or later runs the tools; the page needs only a browser.
+`docs/data-format.md` is the full reference. Node 22 or later runs the tools; the page needs only a browser.
 
 ## How it works
 
