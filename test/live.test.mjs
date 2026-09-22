@@ -91,3 +91,36 @@ test('the header says whether the data is live, why a refresh failed, and when t
   assert.equal(await nodesDrawn(page), drawn);
   assert.equal(await page.evaluate(`document.querySelector('main .message')`), null, 'status text never replaces the map');
 });
+
+// Headless Chrome keeps every tab visible, so the test sets what the page reads and fires its event.
+function setVisibility(page, state) {
+  return page.evaluate(`(() => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => ${JSON.stringify(state)} });
+    document.dispatchEvent(new Event('visibilitychange'));
+  })()`);
+}
+
+// "checked Ns ago" is rewritten on every answer from the server, so while the text holds still, the
+// page is not asking.
+test('a hidden tab stops asking for data', { skip }, async t => {
+  const server = await serve(t, { data: dataFile(sample()), interval: 3600, poll: 0.2 });
+  const page = await openLive(server);
+  await page.waitFor(`/^live · checked \\d+s ago$/.test(document.getElementById('live').textContent)`);
+  await setVisibility(page, 'hidden');
+  await delay(300);
+  const hidden = await statusText(page);
+  await delay(2500);
+  assert.equal(await statusText(page), hidden);
+});
+
+test('a tab shown again asks for data at once, without waiting out the poll', { skip }, async t => {
+  const server = await serve(t, { data: dataFile(sample()), interval: 3600, poll: 60 });
+  const page = await openLive(server);
+  await page.waitFor(`/^live · checked \\d+s ago$/.test(document.getElementById('live').textContent)`);
+  const before = await statusText(page);
+  await delay(2500);
+  assert.equal(await statusText(page), before, 'no request before the 60s poll');
+  await setVisibility(page, 'hidden');
+  await setVisibility(page, 'visible');
+  await page.waitFor(`document.getElementById('live').textContent !== ${JSON.stringify(before)}`, 1000);
+});
