@@ -4170,6 +4170,8 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
 <footer id="footer"></footer>
 <script>
 const BAKED = /*__TASK_MAP_DATA__*/null;
+// Set by task-map-serve: { poll } in seconds. The page then fetches /data instead of waiting for a file.
+const LIVE = /*__TASK_MAP_LIVE__*/null;
 
 let DATA = null;
 const STATUSES = [
