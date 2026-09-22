@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { after, test } from 'node:test';
 import { fileURLToPath } from 'node:url';
+
+import { adapter, alive, hungPids, waitUntil } from './helpers/adapter.mjs';
 
 const ROOT = fileURLToPath(new URL('..', import.meta.url));
 const SAMPLE = join(ROOT, 'examples/sample.json');
@@ -61,53 +63,26 @@ test('task-map-serve on a port already in use says to pick another with --port',
   }
 });
 
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-function alive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code !== 'ESRCH';
-  }
-}
-
-async function waitUntil(check, what, timeout = 5000) {
-  const deadline = Date.now() + timeout;
-  while (!(await check())) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting until ${what}`);
-    await delay(25);
-  }
-}
-
 test('Ctrl-C on task-map-serve leaves no adapter process behind', async t => {
-  const dir = join(scratch, 'hung-adapter');
-  mkdirSync(dir);
-  writeFileSync(join(dir, 'out.json'), '{}');
-  const fixture = fileURLToPath(new URL('fixtures/adapter.mjs', import.meta.url));
-  const command = [process.execPath, fixture, dir, '--hang'].map(arg => JSON.stringify(arg)).join(' ');
-  const serve = spawn(process.execPath, [linked('task-map-serve'), '--adapter', command, '--port', '0'],
+  const fixture = adapter(join(scratch, 'hung-adapter'), {}, '--hang');
+  const serve = spawn(process.execPath, [linked('task-map-serve'), '--adapter', fixture.command, '--port', '0'],
     { cwd: scratch, stdio: ['ignore', 'pipe', 'pipe'] });
   const exited = new Promise(resolve => serve.once('exit', (code, signal) => resolve({ code, signal })));
   let stdout = '';
   serve.stdout.setEncoding('utf8').on('data', chunk => { stdout += chunk; });
-  const pidFile = join(dir, 'grandchild.pid');
-  const pids = () => [
-    Number(readFileSync(join(dir, 'runs'), 'utf8').trim()),
-    Number(readFileSync(pidFile, 'utf8')),
-  ];
+  let pids = [];
   t.after(() => {
     serve.kill('SIGKILL');
-    if (existsSync(pidFile)) for (const pid of pids()) try { process.kill(pid, 'SIGKILL'); } catch {}
+    for (const pid of pids) try { process.kill(pid, 'SIGKILL'); } catch {}
   });
 
   await waitUntil(() => /http:\/\/\S+/.test(stdout), 'the server prints its address');
   await fetch(`${/http:\/\/\S+/.exec(stdout)[0]}/data`);
-  await waitUntil(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8'), 'the adapter starts its child');
-  assert.ok(pids().every(alive), 'the adapter and its child are running');
+  pids = await hungPids(fixture);
+  assert.ok(pids.every(alive), 'the adapter and its child are running');
 
   serve.kill('SIGINT');
   const { code, signal } = await exited;
   assert.ok(code === 130 || signal === 'SIGINT', `exited with ${code ?? signal}`);
-  await waitUntil(() => !pids().some(alive), `no process of ${pids()} is left`);
+  await waitUntil(() => !pids.some(alive), `no process of ${pids} is left`);
 });

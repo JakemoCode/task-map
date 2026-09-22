@@ -2,12 +2,13 @@
 // fetch will not let a caller set the Host header, which the server checks.
 import assert from 'node:assert/strict';
 import { request } from 'node:http';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { networkInterfaces, tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, test } from 'node:test';
 
 import { startServer } from '../lib/serve.mjs';
+import { adapter as fixtureAdapter, alive, delay, hungPids, waitUntil } from './helpers/adapter.mjs';
 
 const sample = () => JSON.parse(readFileSync(new URL('../examples/sample.json', import.meta.url), 'utf8'));
 const scratch = mkdtempSync(join(tmpdir(), 'task-map-serve-'));
@@ -20,48 +21,7 @@ function dataFile(data) {
   return path;
 }
 
-const FIXTURE = new URL('fixtures/adapter.mjs', import.meta.url).pathname;
-const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
-
-// A fixture adapter in its own directory: `write(data)` sets what it prints next, `runs()` counts runs.
-function adapter(data, ...flags) {
-  const dir = join(scratch, `adapter-${files++}`);
-  mkdirSync(dir);
-  const write = next => writeFileSync(join(dir, 'out.json'), typeof next === 'string' ? next : JSON.stringify(next));
-  write(data);
-  const runsFile = join(dir, 'runs');
-  return {
-    dir,
-    write,
-    command: [process.execPath, FIXTURE, dir, ...flags].map(arg => JSON.stringify(String(arg))).join(' '),
-    runs: () => (existsSync(runsFile) ? readFileSync(runsFile, 'utf8').trim().split('\n').length : 0),
-  };
-}
-
-function alive(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    return error.code !== 'ESRCH';
-  }
-}
-
-async function waitUntil(check, what, timeout = 5000) {
-  const deadline = Date.now() + timeout;
-  while (!check()) {
-    if (Date.now() > deadline) throw new Error(`timed out waiting until ${what}`);
-    await delay(25);
-  }
-}
-
-// The pids of a --hang adapter and the child it started, once both are running.
-async function hungPids(fixture) {
-  const pidFile = join(fixture.dir, 'grandchild.pid');
-  await waitUntil(() => existsSync(pidFile) && readFileSync(pidFile, 'utf8'), 'the adapter starts its child');
-  const adapterPid = Number(readFileSync(join(fixture.dir, 'runs'), 'utf8').trim().split('\n').at(-1));
-  return [adapterPid, Number(readFileSync(pidFile, 'utf8'))];
-}
+const adapter = (data, ...flags) => fixtureAdapter(join(scratch, `adapter-${files++}`), data, ...flags);
 
 async function serve(t, options) {
   const server = await startServer({ port: 0, ...options });
