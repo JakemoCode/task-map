@@ -40,6 +40,6 @@ Report the worksheet, the spine choice, and anything left off the map, so the us
 
 - `src/validate.js` is the format's single source of truth. `schema/task-map.schema.json` and `docs/data-format.md` restate it for other languages and for readers. A format change edits all three and `test/validate.test.mjs` together; a test pins the schema's enumerated values to the validator's.
 - A change that makes previously valid data invalid, or renders it differently in meaning, raises `VERSION` in `src/validate.js` and the schema's `version` const.
-- The page is `src/task-map.html` plus `src/validate.js` and `vendor/dagre.min.js`, which `bin/build.mjs` inlines. The page has no build step of its own and no runtime dependencies.
-- `npm test` runs every check. `npm run build` refreshes `dist/`; the tests fail while `dist/` is stale.
+- The page is `src/task-map.html` plus `src/validate.js` and `vendor/dagre.min.js`, which `lib/build.mjs` inlines. The page has no build step of its own and no runtime dependencies. Library code lives in `lib/`; each file in `bin/` is a plain command line over it, installed as `task-map-build` and `task-map-validate`.
+- `npm test` runs every check. `npm run build` refreshes `dist/`; the tests fail while `dist/` is stale. `test/page.test.mjs` drives the page in headless Chrome through `test/helpers/chrome.mjs`: it skips locally without Chrome and fails in CI without it. Set `CHROME_PATH` to point it at a specific browser.
 - Check a visual change in a browser against `dist/sample.html`, which exercises every status, both spine kinds, queued work, links, and the tray.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Checks a task-map data file against format version 1 and prints every problem with its path.
 //
-//   node bin/validate.mjs data.json
+//   task-map-validate data.json
 //
 // Exit 0: valid (warnings may still print). Exit 1: invalid. Exit 2: unreadable input.
 import { readFileSync } from 'node:fs';
@@ -11,7 +11,7 @@ const { validate } = createRequire(import.meta.url)('../src/validate.js');
 
 const file = process.argv[2];
 if (!file) {
-  console.error('usage: node bin/validate.mjs <data.json>');
+  console.error('usage: task-map-validate <data.json>');
   process.exit(2);
 }
 
