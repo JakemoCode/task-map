@@ -37,7 +37,7 @@ task-map-serve --adapter "python3 my_adapter.py" --interval 60 --open
 task-map-serve --data map.json --interval 5    # something else writes the file
 ```
 
-The open page asks for new data every 10 seconds while its tab is visible, and never while it is hidden. A change redraws the map in place, keeping your zoom, filters, focus, and open panel. The header shows when the data was last checked, and why a refresh failed while the last good map stays on screen. The adapter runs with your own credentials, one run at a time, and is killed after two minutes or when you stop the server.
+The open page asks for new data every 10 seconds while its tab is visible, and never while it is hidden. A change redraws the map in place, keeping your zoom, filters, focus, and open panel. The header shows when the data was last checked, and why a refresh failed while the last good map stays on screen. It also counts warnings, which are what the adapter printed to stderr and what the validator found, and lists them on a click. The adapter runs with your own credentials, one run at a time, and is killed after two minutes or when you stop the server.
 
 The server listens on `127.0.0.1` only (`--port`, default 4173) and refuses requests from other sites. Windows is supported, but CI tests Linux only.
 

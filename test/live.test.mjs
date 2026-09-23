@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
 
+import { createServer } from 'node:http';
+
+import { build } from '../lib/build.mjs';
 import { startServer } from '../lib/serve.mjs';
 import { adapter as fixtureAdapter, delay } from './helpers/adapter.mjs';
 import { findChrome, launchChrome } from './helpers/chrome.mjs';
@@ -123,4 +126,71 @@ test('a tab shown again asks for data at once, without waiting out the poll', { 
   await setVisibility(page, 'hidden');
   await setVisibility(page, 'visible');
   await page.waitFor(`document.getElementById('live').textContent !== ${JSON.stringify(before)}`, 1000);
+});
+
+// The sample without some nodes, and every link or ref that pointed at them.
+function withoutNodes(data, ids) {
+  data.nodes = data.nodes.filter(node => !ids.includes(node.id));
+  data.edges = data.edges.filter(edge => !ids.includes(edge.from) && !ids.includes(edge.to));
+  for (const node of data.nodes) {
+    if (node.links) node.links = node.links.filter(link => !ids.includes(link.to));
+    for (const section of node.sections ?? []) if (section.refs) section.refs = section.refs.filter(ref => !ids.includes(ref));
+  }
+  return data;
+}
+
+const warningsShown = page => page.evaluate(`(() => {
+  const box = document.getElementById('warnings');
+  return { hidden: box.hidden, open: box.open, count: box.querySelector('summary').textContent,
+    items: [...box.querySelectorAll('li')].map(li => li.textContent) };
+})()`);
+
+test('the header counts the warnings on the data shown and lists them on request', { skip }, async t => {
+  const fixture = adapter(sample());
+  fixture.warn('task-map: dropped dep WP-12.7 -> WP-12.1\n');
+  const server = await serve(t, { adapter: fixture.command });
+  const page = await openLive(server);
+  await page.waitFor(`document.querySelector('#warnings summary').textContent === '3 warnings'`);
+  await page.evaluate(`document.querySelector('#warnings summary').click()`);
+  assert.deepEqual(await warningsShown(page), {
+    hidden: false, open: true, count: '3 warnings', items: [
+      'task-map: dropped dep WP-12.7 -> WP-12.1',
+      '$.nodes (I-92) has no parent and no edges, so it is drawn in the unanchored tray',
+      '$.nodes (I-93) has no parent and no edges, so it is drawn in the unanchored tray',
+    ],
+  });
+
+  fixture.warn('');
+  fixture.write(withoutNodes(sample(), ['I-93']));
+  await page.waitFor(`document.querySelector('#warnings summary').textContent === '1 warning'`);
+  assert.equal((await warningsShown(page)).open, true, 'an open list stays open as it changes');
+
+  fixture.write(withoutNodes(sample(), ['I-92', 'I-93']));
+  await page.waitFor(`document.getElementById('warnings').hidden`);
+});
+
+// A stand-in for task-map-serve that answers /data however the test says, since the real server
+// never sends a 500 or a body that is not JSON.
+async function stubServer(t) {
+  const reply = { status: 200, body: '' };
+  const page = build(undefined, { live: { poll: 0.2 } });
+  const server = createServer((req, res) => {
+    if (req.url === '/') res.writeHead(200, { 'Content-Type': 'text/html' }).end(page);
+    else res.writeHead(reply.status, { 'Content-Type': 'application/json' }).end(reply.body);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const close = () => new Promise(resolve => { server.closeAllConnections(); server.close(() => resolve()); });
+  t.after(close);
+  return { url: `http://127.0.0.1:${server.address().port}`, reply, close };
+}
+
+test('the header tells a server error and unreadable data apart from an unreachable server', { skip }, async t => {
+  const stub = await stubServer(t);
+  Object.assign(stub.reply, { status: 500, body: 'boom' });
+  const page = await browser.open(stub.url);
+  await page.waitFor(`document.getElementById('live').textContent === 'server error 500'`);
+  Object.assign(stub.reply, { status: 200, body: 'not json' });
+  await page.waitFor(`document.getElementById('live').textContent === 'server sent invalid data'`);
+  await stub.close();
+  await page.waitFor(`document.getElementById('live').textContent === 'server unreachable'`);
 });

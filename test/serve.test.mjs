@@ -188,3 +188,45 @@ test('an adapter that prints more than 16 MiB fails instead of filling memory', 
   assert.match(current.error, /more than 16 MiB/);
   assert.equal(current.data, null);
 });
+
+test('a successful run reports the adapter\'s stderr and the validator\'s warnings as warnings', async t => {
+  const fixture = adapter(sample());
+  fixture.warn('task-map: dropped dep WP-12.7 -> WP-12.1\n\nsecond line\n');
+  const server = await serve(t, { adapter: fixture.command, interval: 0 });
+  const warned = await until(server, current => current.warnings?.length);
+  assert.deepEqual(warned.warnings, [
+    'task-map: dropped dep WP-12.7 -> WP-12.1',
+    'second line',
+    '$.nodes (I-92) has no parent and no edges, so it is drawn in the unanchored tray',
+    '$.nodes (I-93) has no parent and no edges, so it is drawn in the unanchored tray',
+  ]);
+
+  fixture.warn('');
+  const clean = await until(server, current => current.warnings.length === 2);
+  assert.match(clean.warnings[0], /\(I-92\)/);
+});
+
+test('a data file reports the validator\'s warnings too', async t => {
+  const server = await serve(t, { data: dataFile(sample()), interval: 60 });
+  const { warnings } = await until(server, current => current.data);
+  assert.equal(warnings.length, 2);
+});
+
+test('a failed run keeps the warnings of the data still on screen', async t => {
+  const fixture = adapter(sample());
+  fixture.warn('stale ticket skipped\n');
+  const server = await serve(t, { adapter: fixture.command, interval: 0 });
+  await until(server, current => current.warnings?.includes('stale ticket skipped'));
+  fixture.write('FAIL:the tracker is down');
+  const failed = await until(server, current => /tracker is down/.test(current.error ?? ''));
+  assert.ok(failed.warnings.includes('stale ticket skipped'));
+});
+
+test('every warning line survives, however many the adapter prints', async t => {
+  const fixture = adapter(sample());
+  const lines = Array.from({ length: 60 }, (_, i) => `task-map: dropped dep WP-12.${i} -> WP-12.${i + 100}: it names a missing node`);
+  fixture.warn(`${lines.join('\n')}\n`);
+  const server = await serve(t, { adapter: fixture.command, interval: 60 });
+  const { warnings } = await until(server, current => current.data);
+  assert.deepEqual(warnings.slice(0, 60), lines);
+});

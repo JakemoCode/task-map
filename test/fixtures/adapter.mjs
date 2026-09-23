@@ -2,11 +2,12 @@
 // each time it runs, so a test can count runs. When out.json starts with "FAIL:", it prints the
 // rest to stderr and exits 3 instead. --hang starts a child of its own, writes that child's pid to
 // <dir>/grandchild.pid, and never finishes: the case a kill has to clean up after. --bytes n prints
-// n bytes of filler instead of the data.
+// n bytes of filler instead of the data. On a normal run it first prints <dir>/stderr.txt, if
+// present, to stderr: the warnings a successful adapter reports.
 //
 //   node adapter.mjs <dir> [--sleep ms] [--hang] [--bytes n]
 import { spawn } from 'node:child_process';
-import { appendFileSync, readFileSync, writeFileSync } from 'node:fs';
+import { appendFileSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 const [dir, ...flags] = process.argv.slice(2);
@@ -29,5 +30,6 @@ if (flag('--bytes')) {
   process.stderr.write(out.slice('FAIL:'.length));
   process.exitCode = 3;
 } else {
+  if (existsSync(join(dir, 'stderr.txt'))) process.stderr.write(readFileSync(join(dir, 'stderr.txt')));
   process.stdout.write(out);
 }
