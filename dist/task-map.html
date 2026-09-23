@@ -4059,6 +4059,15 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
   .brand b { color: var(--accent); }
   .live { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(420px, 100%); overflow-wrap: anywhere; }
   .live[hidden] { display: none; }
+  .warnings { position: relative; font-family: var(--mono); font-size: 12px; color: var(--progress); }
+  .warnings[hidden] { display: none; }
+  .warnings summary { cursor: pointer; }
+  .warnings ul {
+    position: absolute; top: calc(100% + 6px); left: 0; z-index: 3; width: min(560px, calc(100vw - 32px));
+    max-height: 50vh; overflow-y: auto; margin: 0; padding: 8px 12px 8px 28px; color: var(--text);
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; overflow-wrap: anywhere;
+  }
+  .warnings li { margin: 4px 0; }
   .stats { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(360px, 100%); line-height: 1.45; }
   .group {
     display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 4px; max-width: 100%;
@@ -4162,6 +4171,7 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
   <div class="brand" id="brand">Task map</div>
   <div class="stats" id="stats"></div>
   <div class="live" id="live" role="status" hidden></div>
+  <details class="warnings" id="warnings" hidden><summary></summary><ul></ul></details>
   <div class="group" role="group" aria-label="View">
     <button class="mode" data-mode="frontier">frontier</button>
     <button class="mode" data-mode="all">all tasks</button>
@@ -4869,7 +4879,19 @@ function update(data) {
 
 function readFile(file) {
   file.text().then(text => {
-    try { load(JSON.parse(text)); } catch (error) { showErrors([{ path: file.name, message: `is not valid JSON: ${error.message}` }]); }
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch (error) {
+      showErrors([{ path: file.name, message: `is not valid JSON: ${error.message}` }]);
+      return;
+    }
+    try {
+      load(data);
+    } catch (error) {
+      console.error(error);
+      showErrors([{ path: file.name, message: `could not be drawn: ${error.message}` }]);
+    }
   });
 }
 
@@ -4923,17 +4945,21 @@ function live() {
     asking = true;
     let running = false;
     try {
-      const response = await fetch('/data', { cache: 'no-store' });
-      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
-      const current = await response.json();
+      const current = await askServer();
       running = current.running;
       if (current.data && current.updatedAt !== shown) {
+        try {
+          load(current.data);
+        } catch (error) {
+          console.error(error);
+          throw new Error(`could not draw the data: ${error.message}`);
+        }
         shown = current.updatedAt;
-        load(current.data);
       }
       setLiveStatus(status, current);
-    } catch {
-      status.textContent = 'server unreachable';
+      setWarnings(current.warnings ?? []);
+    } catch (error) {
+      status.textContent = error.message;
       status.title = '';
     }
     asking = false;
@@ -4943,11 +4969,35 @@ function live() {
   ask();
 }
 
+// /data, or an error whose message says which step failed: the network, the server, or its answer.
+async function askServer() {
+  let response;
+  try {
+    response = await fetch('/data', { cache: 'no-store' });
+  } catch {
+    throw new Error('server unreachable');
+  }
+  if (!response.ok) throw new Error(`server error ${response.status}`);
+  try {
+    return await response.json();
+  } catch {
+    throw new Error('server sent invalid data');
+  }
+}
+
 function setLiveStatus(status, { data, checkedAt, error }) {
   const shortError = error && error.length > 160 ? `${error.slice(0, 160)}…` : error;
   status.textContent = error ? `refresh failed: ${shortError}${data ? ` · data from ${ago(checkedAt)}` : ''}`
     : data ? `live · checked ${ago(checkedAt)}` : 'loading…';
   status.title = error ?? '';
+}
+
+// Warnings the server reports for the data on screen: the adapter's stderr and the validator's.
+function setWarnings(warnings) {
+  const box = document.getElementById('warnings');
+  box.hidden = warnings.length === 0;
+  box.querySelector('summary').textContent = `${warnings.length} warning${warnings.length === 1 ? '' : 's'}`;
+  box.querySelector('ul').replaceChildren(...warnings.map(text => html('li', {}, text)));
 }
 
 function ago(time) {

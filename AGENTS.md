@@ -28,7 +28,7 @@ The adapter lives wherever the user's project does, in any language, and prints 
 
 5. **Choose `detail` and `links`.** `detail` is the one fact a reader needs to act on the status: the failing check, the PR number, what it waits on. `links` carry relations that are not structure: a strong link for a declared or cited relation, a weak link for a passing mention. Done when every status in the worksheet names its `detail` source, or none.
 
-6. **Write the adapter and validate.** Print the JSON to stdout, so `task-map-serve --adapter "<command>"` can run it for a live map. Run it into a file, then `node bin/validate.mjs <output.json>`. Fix what it reports and rerun until it exits 0. Done when it exits 0 and every warning names a ticket you intend for the unanchored tray.
+6. **Write the adapter and validate.** Print the JSON to stdout, so `task-map-serve --adapter "<command>"` can run it for a live map. Print anything the user should know but that does not stop the map, such as a relation you dropped, to stderr and exit 0: a live map lists each line as a warning. Run it into a file, then `node bin/validate.mjs <output.json>`. Fix what it reports and rerun until it exits 0. Done when it exits 0 and every warning names a ticket you intend for the unanchored tray.
 
 7. **Check id stability.** Run the adapter twice with no tracker changes between runs and compare the sorted node ids. Done when the two lists are identical. Stable ids are what keep a selection, a link, and a user's bookmark meaningful across refreshes.
 

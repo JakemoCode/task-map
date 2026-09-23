@@ -9,7 +9,8 @@ export const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
 /**
  * A fixture adapter working in `dir`, which it creates. `command` is the shell command to run it,
- * `write(data)` sets what it prints next, and `runs()` counts how many times it has started.
+ * `write(data)` sets what it prints next, `warn(text)` what it prints to stderr on success, and
+ * `runs()` counts how many times it has started.
  */
 export function adapter(dir, data, ...flags) {
   mkdirSync(dir);
@@ -19,6 +20,7 @@ export function adapter(dir, data, ...flags) {
   return {
     dir,
     write,
+    warn: text => writeFileSync(join(dir, 'stderr.txt'), text),
     command: [process.execPath, FIXTURE, dir, ...flags].map(arg => JSON.stringify(String(arg))).join(' '),
     runs: () => (existsSync(runsFile) ? readFileSync(runsFile, 'utf8').trim().split('\n').length : 0),
   };
