@@ -187,10 +187,11 @@ async function stubServer(t) {
 test('the header tells a server error and unreadable data apart from an unreachable server', { skip }, async t => {
   const stub = await stubServer(t);
   Object.assign(stub.reply, { status: 500, body: 'boom' });
+  // Opened before the stub's page has parsed, so #live may not exist yet on the first check.
   const page = await browser.open(stub.url);
-  await page.waitFor(`document.getElementById('live').textContent === 'server error 500'`);
+  await page.waitFor(`document.getElementById('live')?.textContent === 'server error 500'`);
   Object.assign(stub.reply, { status: 200, body: 'not json' });
-  await page.waitFor(`document.getElementById('live').textContent === 'server sent invalid data'`);
+  await page.waitFor(`document.getElementById('live')?.textContent === 'server sent invalid data'`);
   await stub.close();
-  await page.waitFor(`document.getElementById('live').textContent === 'server unreachable'`);
+  await page.waitFor(`document.getElementById('live')?.textContent === 'server unreachable'`);
 });
