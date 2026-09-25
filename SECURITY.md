@@ -11,6 +11,6 @@ The page runs entirely in the browser and treats every data file as untrusted, s
 - Anything in a data file that runs script, or changes the page beyond what the format describes, including through `bin/build.mjs`'s output.
 - A data file that passes `bin/validate.mjs` but breaks or hangs the page.
 - Problems in `bin/` or the build that could affect a machine running them.
-- `task-map-serve` answering anyone but the local user: it binds `127.0.0.1` and refuses a request whose `Host` is not `127.0.0.1` or `localhost` on its own port (DNS rebinding) or whose `Sec-Fetch-Site` is `cross-site`. It sends no CORS headers. An adapter left running after the server stops is in scope too.
+- `task-map-serve` answering anyone but the local user: it binds `127.0.0.1` and refuses a request whose `Host` is not `127.0.0.1` or `localhost` on its own port (DNS rebinding) or whose `Sec-Fetch-Site` is `cross-site`, and one carrying an `Origin` other than its own, which stops a page on another local port from forcing adapter runs through `POST /refresh`. It sends no CORS headers. An adapter left running after the server stops is in scope too.
 
 Only the latest commit on `main`, and the GitHub Pages site built from it, is supported.

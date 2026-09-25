@@ -121,13 +121,16 @@ test('a POST to /refresh runs the adapter at once, however fresh the data', asyn
   next.title = 'Lantern, edited';
   fixture.write(next);
 
-  assert.equal((await get(server, '/refresh')).status, 405);
-  assert.equal((await get(server, '/refresh')).headers.allow, 'POST');
+  const refused = await get(server, '/refresh');
+  assert.equal(refused.status, 405);
+  assert.equal(refused.headers.allow, 'POST');
   assert.equal((await post(server, '/refresh', { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  // Another port on the same host is same-site, so only Origin tells it apart.
+  assert.equal((await post(server, '/refresh', { 'Sec-Fetch-Site': 'same-site', Origin: 'http://127.0.0.1:1' })).status, 403);
   await delay(200);
-  assert.equal(fixture.runs(), 1, 'a GET or a cross-site POST starts no run');
+  assert.equal(fixture.runs(), 1, 'a GET, a cross-site POST, or a POST from another origin starts no run');
 
-  const res = await post(server, '/refresh');
+  const res = await post(server, '/refresh', { Origin: server.url });
   assert.equal(res.status, 200);
   assert.equal(JSON.parse(res.body).running, true, 'the answer says the run has started');
   const refreshed = await until(server, current => current.checkedAt !== first.checkedAt);
@@ -140,10 +143,12 @@ test('refreshes asked for during a run start one more run after it', async t => 
   const server = await serve(t, { adapter: fixture.command, interval: 3600 });
   assert.equal((await state(server)).running, true);
   await Promise.all([1, 2, 3].map(() => post(server, '/refresh')));
-  // The second run starts as the first ends, so running stays true until both are done.
+  // The page's refresh button waits for running to go false, so the queued run has to start in the
+  // same tick the first one ends: the first false seen must already follow both runs.
   await until(server, current => !current.running);
+  assert.equal(fixture.runs(), 2, 'running went false between the two runs');
   await delay(600);
-  assert.equal(fixture.runs(), 2);
+  assert.equal(fixture.runs(), 2, 'three requests queue one run, not three');
 });
 
 test('closing the server drops a refresh asked for during the run it kills', async t => {
