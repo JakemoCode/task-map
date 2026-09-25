@@ -4083,7 +4083,7 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
   .mode[aria-pressed="true"] { background: var(--panel-2); border-color: var(--line); }
   .chip { border-color: var(--line); color: var(--muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   .chip[aria-pressed="true"] { color: var(--bg); background: var(--c); border-color: var(--c); font-weight: 700; }
-  #refresh:disabled { cursor: progress; }
+  #refresh[aria-disabled="true"] { cursor: progress; }
   select { border-color: var(--line); background: var(--panel-2); max-width: 100%; }
   .legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 3px 12px; max-width: 460px; font-size: 11.5px; color: var(--muted); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
@@ -4172,7 +4172,7 @@ function stubFalse(){return false}module.exports=stubFalse},{}],279:[function(re
   <div class="brand" id="brand">Task map</div>
   <div class="stats" id="stats"></div>
   <div class="live" id="live" role="status" hidden></div>
-  <button class="chip" id="refresh" style="--c: var(--text)" hidden>refresh</button>
+  <button class="chip" id="refresh" hidden>refresh</button>
   <details class="warnings" id="warnings" hidden><summary></summary><ul></ul></details>
   <div class="group" role="group" aria-label="View">
     <button class="mode" data-mode="frontier">frontier</button>
@@ -4946,11 +4946,13 @@ function live() {
   let asking = false;
   // Pressed, and not yet sent: the next request is the POST.
   let wanted = false;
+  // aria-disabled rather than disabled: disabling the focused button would drop keyboard focus.
   function setRefreshing(on) {
-    button.disabled = on;
+    button.setAttribute('aria-disabled', String(on));
     button.textContent = on ? 'refreshing…' : 'refresh';
   }
   button.addEventListener('click', () => {
+    if (button.getAttribute('aria-disabled') === 'true') return;
     setRefreshing(true);
     wanted = true;
     ask();
