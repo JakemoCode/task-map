@@ -222,3 +222,8 @@ test('the drop screen says how to make a data file and how to keep it live', { s
   assert.match(help.text, /adapter/);
   assert.match(help.text, /task-map-serve --adapter "<command>"/);
 });
+
+test('a page that is not live has no refresh button', { skip }, async () => {
+  const page = await openViewer();
+  assert.equal(await page.evaluate(`document.getElementById('refresh').checkVisibility()`), false);
+});
