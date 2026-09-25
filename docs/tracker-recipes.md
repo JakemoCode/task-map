@@ -27,8 +27,8 @@ Pull requests have two good shapes:
 |---|---|---|
 | Issue closed as completed, or PR merged | `done` | |
 | Issue closed as not planned, or PR closed unmerged | leave the node off the map | |
-| PR open, any check concluded `FAILURE`, `ERROR`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED`, or `STARTUP_FAILURE` | `failed` | failing check names |
-| PR open, a check not yet `COMPLETED` | `gate` | running check names |
+| PR open, the latest run of any check concluded `FAILURE`, `ERROR`, `TIMED_OUT`, `CANCELLED`, `ACTION_REQUIRED`, or `STARTUP_FAILURE` | `failed` | failing check names |
+| PR open, the latest run of a check not yet `COMPLETED` | `gate` | running check names |
 | PR open as draft | `progress` | `draft` |
 | PR open, checks green | `review` | `PR #n` |
 | Issue open with an open `blocked_by` dependency | `todo` | |
@@ -36,6 +36,8 @@ Pull requests have two good shapes:
 | Issue open, assigned, no PR | `progress` | assignee |
 | Issue open, unassigned, nothing blocking | `next` with `queued: true` | `not started` |
 | Issue open outside the planned work | `open` | first label |
+
+`statusCheckRollup` lists every run of a check on the PR's head commit, including runs a later one replaced: a manual re-run, or a workflow with `cancel-in-progress` that fires again when the PR is edited leaves a `CANCELLED` run behind each time. Keep only the run with the newest `startedAt` for each workflow and check name before applying the table, as `gh pr checks` does. Otherwise a PR that GitHub shows green stays `failed` on the map for as long as that commit is its head.
 
 When the team keeps a Projects board, its Status column is usually a better source than inference: GraphQL `projectV2 { items { content { ... on Issue { number } } status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } }`. Map each column in the worksheet.
 
