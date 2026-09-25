@@ -37,7 +37,7 @@ Pull requests have two good shapes:
 | Issue open, unassigned, nothing blocking | `next` with `queued: true` | `not started` |
 | Issue open outside the planned work | `open` | first label |
 
-`statusCheckRollup` lists every run of a check on the PR's head commit, including runs a later one replaced: a manual re-run, or a workflow with `cancel-in-progress` that fires again when the PR is edited leaves a `CANCELLED` run behind each time. Keep only the run with the newest `startedAt` for each workflow and check name before applying the table, as `gh pr checks` does. Otherwise a PR that GitHub shows green stays `failed` on the map for as long as that commit is its head.
+`statusCheckRollup` lists every run of a check on the PR's head commit, including runs a later one replaced: a manual re-run, or a workflow with `cancel-in-progress` that fires again when the PR is edited leaves a `CANCELLED` run behind each time. Keep only the run with the newest `startedAt` for each workflow and check name before applying the table, as `gh pr checks` does. Otherwise a PR that GitHub shows green stays `failed` on the map for as long as that commit is its head. A commit status (`StatusContext`) has no workflow or check name, so key it by its `context`; keyed by the missing names, every status collapses into one entry and a failing one can vanish.
 
 When the team keeps a Projects board, its Status column is usually a better source than inference: GraphQL `projectV2 { items { content { ... on Issue { number } } status: fieldValueByName(name: "Status") { ... on ProjectV2ItemFieldSingleSelectValue { name } } } }`. Map each column in the worksheet.
 
