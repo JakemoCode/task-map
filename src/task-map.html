@@ -37,7 +37,7 @@
     padding: 10px 16px; border-bottom: 1px solid var(--line); background: var(--bg);
     position: relative; z-index: 2;
   }
-  body.empty header > :not(.brand, .live) { display: none; }
+  body.empty header > :not(.brand, .live, #refresh) { display: none; }
   .brand { font-weight: 700; font-size: 15px; line-height: 1.1; max-width: 160px; }
   .brand b { color: var(--accent); }
   .live { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(420px, 100%); overflow-wrap: anywhere; }
@@ -66,6 +66,7 @@
   .mode[aria-pressed="true"] { background: var(--panel-2); border-color: var(--line); }
   .chip { border-color: var(--line); color: var(--muted); font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: .03em; }
   .chip[aria-pressed="true"] { color: var(--bg); background: var(--c); border-color: var(--c); font-weight: 700; }
+  #refresh:disabled { cursor: progress; }
   select { border-color: var(--line); background: var(--panel-2); max-width: 100%; }
   .legend { margin-left: auto; display: flex; flex-wrap: wrap; gap: 3px 12px; max-width: 460px; font-size: 11.5px; color: var(--muted); }
   .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; background: var(--c); }
@@ -154,6 +155,7 @@
   <div class="brand" id="brand">Task map</div>
   <div class="stats" id="stats"></div>
   <div class="live" id="live" role="status" hidden></div>
+  <button class="chip" id="refresh" style="--c: var(--text)" hidden>refresh</button>
   <details class="warnings" id="warnings" hidden><summary></summary><ul></ul></details>
   <div class="group" role="group" aria-label="View">
     <button class="mode" data-mode="frontier">frontier</button>
@@ -914,21 +916,37 @@ function waitForData() {
 }
 
 // Live mode: ask the server that served this page for data while the tab is visible. A request
-// that finds the data stale starts a refresh, so while one runs, ask again sooner.
+// that finds the data stale starts a refresh, so while one runs, ask again sooner. The refresh
+// button starts one whatever the data's age.
 function live() {
   const status = document.getElementById('live');
+  const button = document.getElementById('refresh');
   status.hidden = false;
+  button.hidden = false;
   status.textContent = 'loading…';
   let shown = null;
   let timer = null;
   let asking = false;
+  // Pressed, and not yet sent: the next request is the POST.
+  let wanted = false;
+  function setRefreshing(on) {
+    button.disabled = on;
+    button.textContent = on ? 'refreshing…' : 'refresh';
+  }
+  button.addEventListener('click', () => {
+    setRefreshing(true);
+    wanted = true;
+    ask();
+  });
   async function ask() {
     clearTimeout(timer);
     if (asking || document.visibilityState !== 'visible') return;
     asking = true;
+    const forced = wanted;
+    wanted = false;
     let running = false;
     try {
-      const current = await askServer();
+      const current = await askServer(forced);
       running = current.running;
       if (current.data && current.updatedAt !== shown) {
         try {
@@ -946,17 +964,23 @@ function live() {
       status.title = '';
     }
     asking = false;
-    if (document.visibilityState === 'visible') timer = setTimeout(ask, (running ? Math.min(1, LIVE.poll) : LIVE.poll) * 1000);
+    // The server runs a forced refresh after any run already going, so running stays true until
+    // the one the button asked for is done. An answer to a request sent before the POST says nothing.
+    if (!running && !wanted) setRefreshing(false);
+    if (document.visibilityState === 'visible') {
+      timer = setTimeout(ask, wanted ? 0 : (running ? Math.min(1, LIVE.poll) : LIVE.poll) * 1000);
+    }
   }
   document.addEventListener('visibilitychange', ask);
   ask();
 }
 
 // /data, or an error whose message says which step failed: the network, the server, or its answer.
-async function askServer() {
+// A forced request POSTs to /refresh, which answers the same after starting a run.
+async function askServer(forced) {
   let response;
   try {
-    response = await fetch('/data', { cache: 'no-store' });
+    response = await fetch(forced ? '/refresh' : '/data', { method: forced ? 'POST' : 'GET', cache: 'no-store' });
   } catch {
     throw new Error('server unreachable');
   }

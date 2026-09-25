@@ -29,15 +29,18 @@ async function serve(t, options) {
   return server;
 }
 
-function get(server, path, headers = {}, host = '127.0.0.1') {
+const get = (server, path, headers = {}, host = '127.0.0.1') => send(server, 'GET', path, headers, host);
+const post = (server, path, headers = {}) => send(server, 'POST', path, headers);
+
+function send(server, method, path, headers = {}, host = '127.0.0.1') {
   return new Promise((resolve, reject) => {
-    const req = request({ host, port: server.port, path, headers, timeout: 5000 }, res => {
+    const req = request({ method, host, port: server.port, path, headers, timeout: 5000 }, res => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', chunk => { body += chunk; });
       res.on('end', () => resolve({ status: res.statusCode, headers: res.headers, body }));
     });
-    req.on('timeout', () => req.destroy(new Error(`GET ${path} timed out`)));
+    req.on('timeout', () => req.destroy(new Error(`${method} ${path} timed out`)));
     req.on('error', reject);
     req.end();
   });
@@ -108,6 +111,51 @@ test('stale data starts one adapter run however many requests arrive; fresh data
   await Promise.all([1, 2, 3, 4, 5].map(() => state(server)));
   await delay(600);
   assert.equal(slow.runs(), 2, 'requests during a run must not start another');
+});
+
+test('a POST to /refresh runs the adapter at once, however fresh the data', async t => {
+  const fixture = adapter(sample());
+  const server = await serve(t, { adapter: fixture.command, interval: 3600 });
+  const first = await until(server, current => current.checkedAt);
+  const next = sample();
+  next.title = 'Lantern, edited';
+  fixture.write(next);
+
+  assert.equal((await get(server, '/refresh')).status, 405);
+  assert.equal((await get(server, '/refresh')).headers.allow, 'POST');
+  assert.equal((await post(server, '/refresh', { 'Sec-Fetch-Site': 'cross-site' })).status, 403);
+  await delay(200);
+  assert.equal(fixture.runs(), 1, 'a GET or a cross-site POST starts no run');
+
+  const res = await post(server, '/refresh');
+  assert.equal(res.status, 200);
+  assert.equal(JSON.parse(res.body).running, true, 'the answer says the run has started');
+  const refreshed = await until(server, current => current.checkedAt !== first.checkedAt);
+  assert.equal(refreshed.data.title, 'Lantern, edited');
+  assert.equal(fixture.runs(), 2);
+});
+
+test('refreshes asked for during a run start one more run after it', async t => {
+  const fixture = adapter(sample(), '--sleep', 300);
+  const server = await serve(t, { adapter: fixture.command, interval: 3600 });
+  assert.equal((await state(server)).running, true);
+  await Promise.all([1, 2, 3].map(() => post(server, '/refresh')));
+  // The second run starts as the first ends, so running stays true until both are done.
+  await until(server, current => !current.running);
+  await delay(600);
+  assert.equal(fixture.runs(), 2);
+});
+
+test('closing the server drops a refresh asked for during the run it kills', async t => {
+  const fixture = adapter(sample(), '--hang');
+  const server = await serve(t, { adapter: fixture.command, interval: 60 });
+  await state(server);
+  const pids = await hungPids(fixture);
+  await post(server, '/refresh');
+  await server.close();
+  await waitUntil(() => !pids.some(alive), `no process of ${pids} is left`);
+  await delay(300);
+  assert.equal(fixture.runs(), 1);
 });
 
 test('a run that finds the same data moves checkedAt but not updatedAt', async t => {

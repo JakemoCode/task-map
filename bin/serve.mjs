@@ -4,7 +4,8 @@
 //   task-map-serve --adapter "python3 adapter.py" --open   # runs the adapter when the data goes stale
 //   task-map-serve --data map.json --interval 5            # re-reads a file something else writes
 //
-// The page polls while it is visible; the adapter runs at most once per --interval seconds.
+// The page polls while it is visible; the adapter runs at most once per --interval seconds, unless
+// the page's refresh button asks for a run.
 import { spawn } from 'node:child_process';
 import { parseArgs } from 'node:util';
 

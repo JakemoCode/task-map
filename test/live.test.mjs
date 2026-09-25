@@ -95,6 +95,22 @@ test('the header says whether the data is live, why a refresh failed, and when t
   assert.equal(await page.evaluate(`document.querySelector('main .message')`), null, 'status text never replaces the map');
 });
 
+test('the refresh button runs the adapter at once and says so until the new data is drawn', { skip }, async t => {
+  const fixture = adapter(sample(), '--sleep', 300);
+  const server = await serve(t, { adapter: fixture.command, interval: 3600, poll: 60 });
+  const page = await openLive(server);
+  const next = sample();
+  next.nodes.find(node => node.id === 'T-33').status = 'review';
+  fixture.write(next);
+
+  await page.evaluate(`document.getElementById('refresh').click()`);
+  assert.deepEqual(await page.evaluate(`(({ textContent, disabled }) => ({ textContent, disabled }))(document.getElementById('refresh'))`),
+    { textContent: 'refreshing…', disabled: true });
+  await page.waitFor(`document.querySelector('#viewport .node[data-id="T-33"]').classList.contains('s-review')`);
+  await page.waitFor(`document.getElementById('refresh').textContent === 'refresh' && !document.getElementById('refresh').disabled`);
+  assert.equal(fixture.runs(), 2, 'one run for the first load, one for the button, none from the 60s poll');
+});
+
 // Headless Chrome keeps every tab visible, so the test sets what the page reads and fires its event.
 function setVisibility(page, state) {
   return page.evaluate(`(() => {
