@@ -9,9 +9,9 @@
   var SPINE_KINDS = ['milestone', 'gate'];
   var STATUSES = ['done', 'todo', 'next', 'progress', 'gate', 'review', 'failed', 'blocked', 'open'];
   var EDGE_TYPES = ['dep', 'gate', 'advisory', 'resolves'];
-  var TOP_KEYS = ['version', 'title', 'source', 'generatedAt', 'kindNames', 'nodes', 'edges'];
+  var TOP_KEYS = ['version', 'title', 'source', 'generatedAt', 'kindNames', 'groupName', 'defaultGroup', 'nodes', 'edges'];
   var NODE_KEYS = ['id', 'kind', 'label', 'title', 'status', 'parent', 'url', 'urlLabel', 'detail', 'queued',
-    'optional', 'tags', 'progress', 'links', 'sections'];
+    'optional', 'tags', 'progress', 'links', 'sections', 'group'];
   var EDGE_KEYS = ['from', 'to', 'type'];
   // Keys an adapter reaches for by habit, and the field that means what it wanted.
   var DID_YOU_MEAN = { labels: 'tags', children: 'parent (set on each child)', state: 'status', name: 'title',
@@ -53,6 +53,9 @@
     ['source', 'generatedAt'].forEach(function (key) {
       if (data[key] !== undefined && typeof data[key] !== 'string') error('$.' + key, 'must be a string when present');
     });
+    ['groupName', 'defaultGroup'].forEach(function (key) {
+      if (data[key] !== undefined && !isNonEmptyString(data[key])) error('$.' + key, 'must be a non-empty string when present');
+    });
     if (data.kindNames !== undefined) {
       if (!isObject(data.kindNames)) error('$.kindNames', 'must be an object when present');
       else Object.keys(data.kindNames).forEach(function (key) {
@@ -86,6 +89,8 @@
         if (node[key] !== undefined && typeof node[key] !== 'boolean') error(at + '.' + key, 'must be a boolean when present');
       });
       if (node.queued && node.status !== 'next') error(at + '.queued', 'only applies to status next (up next, not started)');
+      if (node.group !== undefined && !isNonEmptyString(node.group)) error(at + '.group', 'must be a non-empty string when present');
+      if (node.group !== undefined && node.parent !== undefined) error(at + '.group', 'is set by its parent; a ticket with a parent belongs to its parent\'s group');
       if (node.tags !== undefined && (!Array.isArray(node.tags) || !node.tags.every(isNonEmptyString))) {
         error(at + '.tags', 'must be an array of non-empty strings when present');
       }
@@ -139,6 +144,10 @@
         });
       }
     });
+
+    if (isNonEmptyString(data.defaultGroup) && !data.nodes.some(function (node) { return isObject(node) && node.group === data.defaultGroup; })) {
+      error('$.defaultGroup', 'names ' + JSON.stringify(data.defaultGroup) + ', which no node has as its group');
+    }
 
     var depNext = {};
     data.edges.forEach(function (edge, i) {

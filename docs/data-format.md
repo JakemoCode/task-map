@@ -13,6 +13,8 @@ One JSON object describes the whole map. `src/validate.js` enforces every rule b
 | `source` | no | string | Where the data came from. Shown in the footer. |
 | `generatedAt` | no | string | When the adapter ran, in any format. Shown in the footer. |
 | `kindNames` | no | object | Display names for the kinds, e.g. `{ "milestone": "WP", "gate": "checkpoint" }`. Used in the details panel, the footer, and the tray label. |
+| `groupName` | no | string | What a `group` is called, e.g. `"release"` or `"slice"`. Labels the group selector. Defaults to `group`. |
+| `defaultGroup` | no | string | The group the page opens on. Without it the page opens on every group. Must be some node's `group`. |
 
 Unknown fields are errors at every level, so a misspelled field fails validation instead of silently doing nothing.
 
@@ -37,6 +39,7 @@ The **spine** is the milestones and gates: always drawn, laid out left to right 
 | `title` | yes | string | One line of human text. Truncated on the map, shown in full in the panel. |
 | `status` | yes | string | One of the nine statuses below. |
 | `parent` | tickets only | string | The id of the milestone or gate this ticket hangs off. The page draws the dotted edge from it; there is no child edge type. A ticket with no parent and no edges goes to the unanchored tray. |
+| `group` | no | string | Which part of a large project the node belongs to: a release, a phase, a slice. With two or more groups the page shows a selector that draws one group at a time. Not allowed on a ticket with a `parent`, which belongs to its parent's group. A node with no group shows in every group. |
 | `detail` | no | string | The one fact the status needs, shown on the ticket's middle line: the failing check, the PR number, what it is blocked on. |
 | `queued` | no | boolean | Only with status `next`: planned and unblocked but not started. Drawn with a double dashed amber border and the word QUEUED. |
 | `optional` | no | boolean | Dashed outline. For work that is planned but not required. |
@@ -83,6 +86,7 @@ Errors (the page and `bin/build.mjs` refuse the data):
 - Every node has a unique non-empty `id`, a known `kind` and `status`, and non-empty `label` and `title`.
 - `parent` appears only on tasks and issues, and names a milestone or gate.
 - `queued` appears only with status `next`.
+- `group`, `groupName`, and `defaultGroup` are non-empty strings; `group` does not appear on a ticket with a `parent`; `defaultGroup` names some node's `group`.
 - `url` starts with `http://` or `https://`. The panel renders it as a link, and a map can load data from any `?data=` URL, so only web links pass.
 - `progress` has whole-number `done` and `total` with `done <= total`.
 - Every `links[].to`, `sections[].refs[]`, `edges[].from`, and `edges[].to` names an existing node.
