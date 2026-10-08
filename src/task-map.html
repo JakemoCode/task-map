@@ -41,7 +41,7 @@
   .brand { font-weight: 700; font-size: 15px; line-height: 1.1; max-width: 160px; }
   .brand b { color: var(--accent); }
   .live { font-family: var(--mono); font-size: 12px; color: var(--muted); max-width: min(420px, 100%); overflow-wrap: anywhere; }
-  .live[hidden] { display: none; }
+  .live[hidden], .group[hidden] { display: none; }
   .warnings { position: relative; font-family: var(--mono); font-size: 12px; color: var(--progress); }
   .warnings[hidden] { display: none; }
   .warnings summary { cursor: pointer; }
@@ -162,6 +162,7 @@
     <button class="mode" data-mode="all">all tasks</button>
   </div>
   <div class="group" role="group" aria-label="Show statuses" id="chips"><span>show:</span></div>
+  <div class="group" id="group-picker" hidden><span>group:</span><select id="groups" aria-label="Group"></select></div>
   <div class="group"><span>focus:</span><select id="focus" aria-label="Focus"></select></div>
   <button class="chip" id="fit" style="--c: var(--text)">fit</button>
   <div class="legend" id="legend"></div>
@@ -203,8 +204,11 @@ function showMap() {
   if (!main.contains(MAP_SVG)) main.replaceChildren(MAP_SVG);
 }
 
-const state = { mode: 'frontier', show: new Set(PRESETS.frontier), focus: '', selected: null, view: { x: 0, y: 0, k: 1 } };
+// group: '' draws every group; null until data with groups picks its default.
+const state = { mode: 'frontier', show: new Set(PRESETS.frontier), group: null, focus: '', selected: null, view: { x: 0, y: 0, k: 1 } };
 let kindNames = DEFAULT_KIND_NAMES;
+// Every node's group, in the order the data first names each.
+let groups = [];
 // DATA.edges plus a child edge from every ticket's parent, which the format expresses as a field.
 let edges = [];
 const byId = new Map();
@@ -314,15 +318,25 @@ function lineage(id) {
   return keep;
 }
 
+// A ticket with a parent belongs to its parent's group. A node in no group shows in every one.
+function groupOf(node) {
+  return node.parent ? byId.get(node.parent).group : node.group;
+}
+
+function inGroup(node) {
+  const group = groupOf(node);
+  return !state.group || group === undefined || group === state.group;
+}
+
 function visibleNodes() {
   const spineScope = state.focus ? lineage(state.focus) : null;
   const visible = new Set();
   for (const node of DATA.nodes) {
-    if (SPINE.has(node.kind) && (!spineScope || spineScope.has(node.id))) visible.add(node.id);
+    if (SPINE.has(node.kind) && inGroup(node) && (!spineScope || spineScope.has(node.id))) visible.add(node.id);
   }
   for (const node of DATA.nodes) {
     if (SPINE.has(node.kind) || !state.show.has(node.status)) continue;
-    if (node.parent ? visible.has(node.parent) : !state.focus) visible.add(node.id);
+    if (node.parent ? visible.has(node.parent) : !state.focus && inGroup(node)) visible.add(node.id);
   }
   return visible;
 }
@@ -504,7 +518,7 @@ function render() {
 let bounds = { width: 0, height: 0 };
 
 function renderStats(visible) {
-  const all = DATA.nodes;
+  const all = DATA.nodes.filter(inGroup);
   const count = status => all.filter(n => n.status === status).length;
   const hidden = STATUSES.filter(([key]) => !state.show.has(key)).map(([, label]) => label);
   const active = all.filter(n => n.status !== 'done').length;
@@ -675,6 +689,7 @@ function select(id, recenter) {
   const hidden = node && !positions.has(id);
   if (hidden) {
     state.show.add(node.status);
+    if (!inGroup(node)) setGroup(groupOf(node));
     if (state.focus && !lineage(state.focus).has(node.parent || id)) state.focus = '';
     document.getElementById('focus').value = state.focus;
   }
@@ -711,11 +726,18 @@ function setData(data) {
   const words = DATA.title.split(' ');
   const brand = document.getElementById('brand');
   brand.replaceChildren(document.createTextNode(`${words[0]} `), html('b', {}, words.slice(1).join(' ')));
-  const focus = document.getElementById('focus');
-  focus.replaceChildren(html('option', { value: '' }, 'whole map'));
-  for (const node of DATA.nodes.filter(n => SPINE.has(n.kind))) {
-    focus.appendChild(html('option', { value: node.id }, `${node.label} · ${truncate(node.title, 36)}`));
-  }
+  groups = [...new Set(DATA.nodes.map(n => n.group).filter(Boolean))];
+  const picker = document.getElementById('group-picker');
+  const groupName = DATA.groupName || 'group';
+  picker.hidden = groups.length < 2;
+  picker.querySelector('span').textContent = `${groupName}:`;
+  const select = document.getElementById('groups');
+  select.setAttribute('aria-label', groupName);
+  select.replaceChildren(html('option', { value: '' }, 'all'), ...groups.map(group => html('option', { value: group }, group)));
+  // One group or none draws everything, since there is nothing to choose between.
+  if (picker.hidden) state.group = null;
+  else if (state.group === null || (state.group && !groups.includes(state.group))) state.group = DATA.defaultGroup || '';
+  setGroup(state.group);
   document.getElementById('footer').textContent = [
     'scroll = zoom · drag = pan · click a node for details',
     `solid = dependency · dashed amber = ${kindNames.gate} · dotted = ${kindNames.milestone} → what hangs off it`,
@@ -723,6 +745,19 @@ function setData(data) {
     DATA.source, DATA.generatedAt && `generated ${DATA.generatedAt}`,
   ].filter(Boolean).join(' · ');
   syncControls();
+}
+
+// Show one group, and offer only its spine to focus on.
+function setGroup(group) {
+  state.group = group;
+  document.getElementById('groups').value = group ?? '';
+  if (state.focus && byId.has(state.focus) && !inGroup(byId.get(state.focus))) state.focus = '';
+  const focus = document.getElementById('focus');
+  focus.replaceChildren(html('option', { value: '' }, 'whole map'));
+  for (const node of DATA.nodes.filter(n => SPINE.has(n.kind) && inGroup(n))) {
+    focus.appendChild(html('option', { value: node.id }, `${node.label} · ${truncate(node.title, 36)}`));
+  }
+  focus.value = state.focus;
 }
 
 let bound = false;
@@ -753,6 +788,8 @@ function bindOnce() {
   }));
   const focus = document.getElementById('focus');
   focus.addEventListener('change', () => { state.focus = focus.value; redraw(true); });
+  const groupSelect = document.getElementById('groups');
+  groupSelect.addEventListener('change', () => { setGroup(groupSelect.value); redraw(true); });
   document.getElementById('fit').addEventListener('click', fit);
 }
 
@@ -847,11 +884,12 @@ function load(data) {
 // the nodes they point at still exist, and show what changed.
 function update(data) {
   const keyboardFocus = document.activeElement?.closest?.('.node')?.dataset.id;
+  const before = { group: state.group, focus: state.focus };
   setData(data);
   const focusNode = byId.get(state.focus);
-  // A vanished focus redraws the whole map, which the old zoom (fitted to the focus) no longer fits.
-  const refit = Boolean(state.focus) && (!focusNode || !SPINE.has(focusNode.kind));
-  if (refit) state.focus = '';
+  if (state.focus && (!focusNode || !SPINE.has(focusNode.kind))) state.focus = '';
+  // A vanished focus or group redraws a different map, which the old zoom no longer fits.
+  const refit = state.group !== before.group || state.focus !== before.focus;
   document.getElementById('focus').value = state.focus;
   if (state.selected && !byId.has(state.selected)) {
     state.selected = null;

@@ -12,7 +12,7 @@ The map is one HTML file with no server and no dependencies. It reads one JSON f
 
 Offline, the same two pages are `dist/sample.html` and `dist/task-map.html` in this repo.
 
-The **frontier** view shows the whole spine plus only the work that needs attention: up next, in progress, in the gate, in review, failed, blocked, and open issues. **All tasks** adds finished and not-yet-ready work. The chips toggle each status on its own, and **focus** narrows the map to one milestone's upstream and downstream. Scroll zooms, drag pans, `f` fits, `Esc` closes the panel.
+The **frontier** view shows the whole spine plus only the work that needs attention: up next, in progress, in the gate, in review, failed, blocked, and open issues. **All tasks** adds finished and not-yet-ready work. The chips toggle each status on its own, and **focus** narrows the map to one milestone's upstream and downstream. When the data splits the project into groups (releases, phases, slices), a selector draws one group at a time. Scroll zooms, drag pans, `f` fits, `Esc` closes the panel.
 
 ## Wire up your project
 

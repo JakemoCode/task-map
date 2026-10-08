@@ -99,6 +99,24 @@ test('edges', () => {
   expectError(d => { d.edges.push({ from: 'M1', to: 'M2', type: 'dep', label: 'x' }); }, '.label is not a field');
 });
 
+test('groups: a spine node or an unanchored ticket names one, a parented ticket takes its parent\'s', () => {
+  const data = minimal();
+  Object.assign(data, { groupName: 'release', defaultGroup: 'v2' });
+  data.nodes[0].group = 'v1';
+  data.nodes[1].group = 'v2';
+  delete data.nodes[4].parent;
+  data.nodes[4].group = 'v2';
+  data.edges.push({ from: 'I1', to: 'M2', type: 'resolves' });
+  assert.deepEqual(validate(data).errors, []);
+
+  expectError(d => { d.nodes[0].group = ''; }, '.group must be a non-empty string');
+  expectError(d => { d.nodes[0].group = 1; }, '.group must be a non-empty string');
+  expectError(d => { d.nodes[3].group = 'v1'; }, '.group is set by its parent');
+  expectError(d => { d.groupName = ''; }, '$.groupName must be a non-empty string');
+  expectError(d => { d.nodes[0].group = 'v1'; d.defaultGroup = 'v9'; }, '$.defaultGroup names "v9", which no node has');
+  expectError(d => { d.defaultGroup = 3; }, '$.defaultGroup must be a non-empty string');
+});
+
 test('a dependency cycle is reported with its path', () => {
   expectError(d => { d.edges.push({ from: 'M2', to: 'M1', type: 'dep' }); }, 'cycle: M1 -> M2 -> M1');
 });

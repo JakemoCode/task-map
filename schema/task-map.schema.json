@@ -21,6 +21,8 @@
         "issue": { "type": "string", "minLength": 1 }
       }
     },
+    "groupName": { "type": "string", "minLength": 1, "description": "What a group is called, e.g. \"release\"; labels the group selector." },
+    "defaultGroup": { "type": "string", "minLength": 1, "description": "The group the page opens on. Must be some node's group." },
     "nodes": { "type": "array", "items": { "$ref": "#/$defs/node" } },
     "edges": { "type": "array", "items": { "$ref": "#/$defs/edge" } }
   },
@@ -40,6 +42,7 @@
         "title": { "type": "string", "minLength": 1 },
         "status": { "$ref": "#/$defs/status" },
         "parent": { "type": "string", "minLength": 1 },
+        "group": { "type": "string", "minLength": 1 },
         "url": { "type": "string", "pattern": "^[Hh][Tt][Tt][Pp][Ss]?://" },
         "urlLabel": { "type": "string" },
         "detail": { "type": "string" },

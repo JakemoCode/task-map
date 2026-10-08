@@ -211,6 +211,84 @@ test('dropping a second file replaces the data without duplicating the controls'
   assert.ok(Math.abs(await wheelRatio(page) - ratio) < 1e-9, 'one wheel notch should zoom by the same factor as before');
 });
 
+// The sample split into two releases. I-92 hangs off nothing but belongs to v1; I-93 belongs to none.
+function grouped() {
+  const data = sample();
+  Object.assign(data, { title: 'Lantern, grouped', groupName: 'release', defaultGroup: 'v2' });
+  const v1 = new Set(['M0', 'M1', 'M2', 'G1', 'I-92']);
+  for (const node of data.nodes) {
+    if (!node.parent && node.id !== 'I-93') node.group = v1.has(node.id) ? 'v1' : 'v2';
+  }
+  return data;
+}
+
+const drawnIds = page => page.evaluate(`[...document.querySelectorAll('#viewport .node')].map(node => node.dataset.id).sort()`);
+
+async function pickGroup(page, group) {
+  await page.evaluate(`(() => {
+    const groups = document.getElementById('groups');
+    groups.value = ${JSON.stringify(group)};
+    groups.dispatchEvent(new Event('change'));
+  })()`);
+}
+
+test('a map without groups has no group selector', { skip }, async () => {
+  const page = await openViewer();
+  await drop(page, sample());
+  assert.equal(await page.evaluate(`document.getElementById('group-picker').checkVisibility()`), false);
+});
+
+test('the group selector opens on the default group and draws only that group', { skip }, async () => {
+  const page = await openViewer();
+  await drop(page, grouped());
+  await page.evaluate(`document.querySelector('.mode[data-mode="all"]').click()`);
+
+  assert.deepEqual(await page.evaluate(`({
+    visible: document.getElementById('group-picker').checkVisibility(),
+    label: document.querySelector('#group-picker > span').textContent,
+    value: document.getElementById('groups').value,
+    options: [...document.querySelectorAll('#groups option')].map(o => [o.value, o.textContent]),
+  })`), { visible: true, label: 'release:', value: 'v2', options: [['', 'all'], ['v1', 'v1'], ['v2', 'v2']] });
+  const v2 = await drawnIds(page);
+  assert.deepEqual(v2.filter(id => /^[MG]/.test(id)), ['G2', 'M3', 'M4', 'M5', 'M6', 'M7']);
+  assert.ok(v2.includes('T-41') && v2.includes('I-93'), 'its tickets and the ungrouped issue are drawn');
+  assert.ok(!v2.includes('T-11') && !v2.includes('I-92'), 'v1 tickets are not drawn');
+  assert.equal(await count(page, '#focus option'), 1 + 6, 'focus lists only this group\'s spine');
+
+  await pickGroup(page, '');
+  assert.equal((await drawnIds(page)).length, grouped().nodes.length);
+});
+
+test('opening a node in another group switches to that group', { skip }, async () => {
+  const page = await openViewer();
+  await drop(page, grouped());
+  await selectNode(page, 'M3');
+  await page.evaluate(`[...document.querySelectorAll('#panel .refs button')].find(b => b.textContent.endsWith('M1')).click()`);
+
+  assert.equal(await page.evaluate(`document.getElementById('groups').value`), 'v1');
+  assert.ok((await drawnIds(page)).includes('M1'));
+  assert.equal(await page.evaluate(`document.querySelector('#panel h2').textContent`), grouped().nodes.find(n => n.id === 'M1').title);
+});
+
+test('new data keeps the chosen group, and a vanished one falls back to the default', { skip }, async () => {
+  const page = await openViewer();
+  await drop(page, sample());
+  await drop(page, grouped());
+  assert.equal(await page.evaluate(`document.getElementById('groups').value`), 'v2', 'a map that gains groups opens on the default');
+  await pickGroup(page, 'v1');
+
+  const next = grouped();
+  next.title = 'Lantern, grouped later';
+  await drop(page, next);
+  assert.equal(await page.evaluate(`document.getElementById('groups').value`), 'v1');
+
+  const renamed = grouped();
+  renamed.title = 'Lantern, v1 renamed';
+  for (const node of renamed.nodes) if (node.group === 'v1') node.group = 'v1.0';
+  await drop(page, renamed);
+  assert.equal(await page.evaluate(`document.getElementById('groups').value`), 'v2');
+});
+
 test('the drop screen says how to make a data file and how to keep it live', { skip }, async () => {
   const page = await openViewer();
   const help = await page.evaluate(`(() => {
